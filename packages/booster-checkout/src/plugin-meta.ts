@@ -10,4 +10,10 @@ export const pluginMeta: PluginMeta = {
   contextKinds: ['main'],
   urlPatterns: [],
   grantedCapabilities: ['ui', 'steam', 'configs', 'bus', 'keys'],
+  subscribeTopics: [
+    'booster-addfunds.topup-requested',
+    'booster-addfunds.user.snapshot.request',
+    'booster-addfunds.keys.request',
+    'booster-addfunds.keys.purchase',
+  ],
 };

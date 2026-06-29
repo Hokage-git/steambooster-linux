@@ -14,4 +14,11 @@ export const pluginMeta: PluginMeta = {
   // and this manifest-sidecar source stay byte-identical (crossValidate subset).
   urlPatterns: ADDFUNDS_URL_PATTERNS,
   grantedCapabilities: ['ui', 'steam', 'configs', 'bus', 'pages'],
+  subscribeTopics: [
+    'booster-checkout.keys.response',
+    'booster-checkout.keys.email-required',
+    'booster-checkout.keys.purchase-result',
+    'booster-checkout.keys.ready',
+    'booster-checkout.user.snapshot',
+  ],
 };

@@ -1,0 +1,16 @@
+# booster-plugins/bunfig.toml
+#
+# Monorepo-root bun configuration. Applies when `bun test` is run from the
+# workspace root (as opposed to `bun run test` which explicitly passes
+# --cwd per package). The [test].preload entry delegates to booster-checkout's
+# Svelte plugin setup so that .svelte / .svelte.ts rune modules compile
+# correctly and `mount()` resolves to the client runtime — same behaviour as
+# running `bun test --cwd packages/booster-checkout` with its own bunfig.toml.
+#
+# Resolution note: bun resolves imports inside a preload file relative to
+# that file's location, not to this bunfig.toml. So `bun-plugin-svelte` and
+# `svelte/compiler` resolve from packages/booster-checkout/node_modules even
+# though this file sits at the workspace root.
+
+[test]
+preload = ["./packages/booster-checkout/tests/setup-svelte-plugin.ts"]
