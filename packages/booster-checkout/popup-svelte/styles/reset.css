@@ -1,7 +1,13 @@
 /* payload/popup-svelte/styles/reset.css */
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html, body {
-  background: var(--booster-surface-0);
+  /* Transparent so the taller popup window (panel + 8px gap + promo block)
+   * composites the empty gap through to the Steam main window behind it — the
+   * promo appears to float below the popup. The popup panel (.root) paints its
+   * own opaque #25282e fill and covers its region 1:1, so its native look is
+   * unchanged. The window backing is alpha-capable (COMPOSITED +
+   * TRANSPARENT_PARENT dropdown flags). */
+  background: transparent;
   font-family: var(--booster-font-stack);
   color: var(--booster-text-primary);
   overflow: hidden;

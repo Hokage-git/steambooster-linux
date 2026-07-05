@@ -36,7 +36,7 @@ class InMemoryBC extends EventTarget {
 
 import {
   initBridge, postSupport, postMenuAction, payAndNavigate, _resetForTest,
-  postRefreshPaymentMethods, postFaq, postOpenDoc,
+  postRefreshPaymentMethods, postFaq, postOpenDoc, postOpenCatalog,
 } from '../lib/bridge';
 import {
   _setMethodHealHandler, type PaymentMethod,
@@ -919,6 +919,13 @@ test('postOpenDoc posts {kind:open-doc, doc} for each doc', () => {
     expect((m!.data as any).doc).toBe(doc);
     cap.bc.close();
   }
+});
+
+test('postOpenCatalog posts {kind:open-catalog} on the wire', () => {
+  const { messages } = captureOutgoing();
+  postOpenCatalog();
+  expect(messages.length).toBe(1);
+  expect(messages[0]?.kind).toBe('open-catalog');
 });
 
 test('init forwards urls.telegram into ui.urls.telegram', () => {

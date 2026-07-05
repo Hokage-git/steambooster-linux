@@ -40,7 +40,13 @@ const WINDOW_TERMS   = 'sb_terms';
 const WINDOW_PRIVACY = 'sb_privacy';
 
 const POPUP_W = 378;
-const POPUP_H = 248;
+// 248 popup panel + 8 transparent gap + 48 promo block + 8 transparent
+// overhang strip = 312. The extra height below the panel is empty/transparent
+// window space where the detached «Каталог» promo floats and the money
+// illustration overhangs the block's bottom edge (see App.svelte / reset.css).
+// The panel itself stays 248 and its position (anchored at the header button)
+// is unchanged.
+const POPUP_H = 312;
 
 /**
  * Main-shell plugin install entry. Invoked by the plugin host when this
@@ -299,6 +305,12 @@ export async function installMain(ctx: PluginContext): Promise<() => void> {
     // 165 px AmountRow slot). Single CSS border is the source of
     // truth for the pixel-perfect 378 × 248 layout.
     nativeBorder: false,
+    // The promo block below the panel relies on the window backing being
+    // alpha-capable so the 8px gap composites the Steam main window through
+    // it. Both default to true in STEAM_DROPDOWN_FLAGS; set explicitly so the
+    // dependency is self-documenting and survives a future default change.
+    composited: true,
+    transparentParent: true,
   });
   popupRef = popup;
   topupPopupRef = popup;
@@ -511,6 +523,16 @@ export async function installMain(ctx: PluginContext): Promise<() => void> {
       const doc = (d as { doc?: unknown }).doc;
       if (isDocKey(doc)) void openDocWindow(doc);
       else console.warn('[booster-checkout] open-doc: unknown doc', doc);
+    } else if (d?.kind === 'open-catalog') {
+      // Promo «Каталог» button → navigate the MAIN Steam window to the catalog
+      // (relay → MainWindowBrowserManager.ShowURL, so it works from the Library
+      // too). URLS.catalog is a compile-time constant, so no runtime URL
+      // validation is needed here. Hide the popup after — the main window takes
+      // focus (same UX as the Pay redirect). Catch mirrors the other branches'
+      // convention (openUrl rejects on a relay timeout).
+      void sb.steam.openUrl(URLS.catalog)
+        .catch((e) => console.error('[booster-checkout] openUrl catalog failed:', e));
+      popup.hide();
     }
   });
 

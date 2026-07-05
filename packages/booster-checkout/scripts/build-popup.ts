@@ -71,6 +71,13 @@ function readPngAsDataUriDefine(p: string): string {
   const bytes = readFileSync(p);
   return JSON.stringify(`data:image/png;base64,${bytes.toString('base64')}`);
 }
+// WebP is used for the promo money illustration — far smaller than PNG for a
+// glossy image with alpha (Steam CEF = Chromium, WebP+alpha supported), which
+// keeps the inlined popup HTML under its size cap.
+function readWebpAsDataUriDefine(p: string): string {
+  const bytes = readFileSync(p);
+  return JSON.stringify(`data:image/webp;base64,${bytes.toString('base64')}`);
+}
 
 export async function buildSveltePopup(opts: BuildSveltePopupOptions): Promise<string> {
   const tmp = mkdtempSync(join(tmpdir(), 'booster-popup-build-'));
@@ -112,7 +119,9 @@ export async function buildSveltePopup(opts: BuildSveltePopupOptions): Promise<s
         __SB_ICON_SETTINGS__:     readSvgAsDefine(join(opts.iconBaseDir, 'settings.svg')),
         __SB_ICON_SUPPORT__:      readSvgAsDefine(join(opts.iconBaseDir, 'support.svg')),
         __SB_ICON_TELEGRAM__:     readSvgAsDefine(join(opts.iconBaseDir, 'telegram.svg')),
+        __SB_ICON_CATALOG_ARROW__: readSvgAsDefine(join(opts.iconBaseDir, 'catalog-arrow.svg')),
         __SB_IMG_LOGO_DATA_URI__: readPngAsDataUriDefine(join(opts.imageBaseDir, 'logo.png')),
+        __SB_IMG_MONEY_DATA_URI__: readWebpAsDataUriDefine(join(opts.imageBaseDir, 'money.webp')),
         // The plugin's own version, baked for popup-svelte/lib/headers.ts.
         // Injector + framework versions are deliberately NOT baked (they
         // arrive at runtime — see headers.ts), keeping the popup bundle's

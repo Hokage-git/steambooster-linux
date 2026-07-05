@@ -61,6 +61,10 @@ const ru = {
       window_title: 'Пополнение аккаунта {login:string}',
       window_title_no_login: 'Пополнение аккаунта',
     },
+    promo: {
+      button: 'Каталог',
+      title: 'Игры дешевле',
+    },
     total_input: {
       placeholder: 'Желаемый баланс',
     },

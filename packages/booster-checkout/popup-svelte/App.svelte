@@ -18,7 +18,9 @@
   import { scheduleDesiredCommit, cancelDesiredCommit } from './lib/desired-debounce';
   import {
     postSupport, postMenuAction, payAndNavigate, postRefreshPaymentMethods, postFaq, postOpenDoc,
+    postOpenCatalog,
   } from './lib/bridge';
+  import { ICON_CATALOG_ARROW, IMG_MONEY_DATA_URI } from './lib/icons';
   import { LL } from '../src/i18n';
 
   // Re-fire calc on amount/methodId/userLogin change. Reading them inside
@@ -245,6 +247,7 @@
 
 <svelte:document onclick={handleClickOutside} />
 
+<div class="stack">
 <div class="root">
   <Header
     menuOpen={ui.menuOpen}
@@ -328,6 +331,28 @@
   {/if}
 </div>
 
+<!-- Detached promo block, floating 8px below the popup (transparent gap). The
+     money illustration bleeds up across the gap onto the panel's bottom edge.
+     Hidden while the pay-error modal is up — its scrim only covers .root, so a
+     visible/clickable promo underneath would be wrong. `.promo-wrap` uses
+     display:contents (single {#if} child → sidesteps happy-dom's null-parentNode
+     on multi-child toggle; see .body-slot above); .promo-money still positions
+     against .stack. -->
+{#if ui.payError === null}
+  <div class="promo-wrap">
+    <div class="promo-gap"></div>
+    <div class="promo">
+      <span class="promo-title">{LL.checkout.promo.title()}</span>
+      <button class="promo-btn" type="button" onclick={() => postOpenCatalog()}>
+        {LL.checkout.promo.button()}
+        {@html ICON_CATALOG_ARROW}
+      </button>
+    </div>
+    <img class="promo-money" src={IMG_MONEY_DATA_URI} alt="" aria-hidden="true" />
+  </div>
+{/if}
+</div>
+
 <style>
   /* Native Steam Notifications popup look: solid dark fill with a
    * radial top-left highlight, 1px black outer border, and a pair of
@@ -368,5 +393,83 @@
    * inside .root. */
   .body-slot {
     display: contents;
+  }
+
+  /* ── Detached «Каталог» promo block ──────────────────────────────────
+   * .stack is the single App root and the positioned ancestor for the
+   * money layer. It contains the UNCHANGED .root panel, then the promo
+   * (gap + block) in normal flow. Width pinned to the popup width so the
+   * block is edge-to-edge identical to the panel. */
+  .stack {
+    position: relative;
+    width: 378px;
+  }
+  .promo-wrap { display: contents; }
+  /* Transparent spacer — shows the Steam main window through it. */
+  .promo-gap { height: 8px; }
+  .promo {
+    position: relative;
+    width: 378px;
+    height: 48px;
+    border-radius: 6px;
+    /* #21212c base + 20% #664cfe→#34a37b linear overlay (from the figml). */
+    background:
+      linear-gradient(90deg, rgba(102, 76, 254, 0.2), rgba(52, 163, 123, 0.2)),
+      #21212c;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 8px 0 16px;
+    /* Money bleeds above the block top — must NOT be clipped. Rounded
+     * corners come from border-radius on the painted bg (no clip needed). */
+    overflow: visible;
+  }
+  .promo-title {
+    position: relative;
+    z-index: 2;
+    color: #fff;
+    font-weight: var(--booster-fw-bold);
+    font-size: 16px;
+    letter-spacing: 0.02em;
+    line-height: 1.5;
+    white-space: nowrap;
+  }
+  .promo-btn {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border: 0;
+    cursor: pointer;
+    border-radius: 6px;
+    padding: 8px 12px;
+    background: var(--booster-brand-green);
+    color: #fff;
+    font-family: inherit;
+    font-weight: var(--booster-fw-bold);
+    font-size: 12px;
+    letter-spacing: 0.02em;
+    line-height: 16px;
+    white-space: nowrap;
+  }
+  .promo-btn:hover { background: var(--booster-brand-green-hover); }
+  .promo-btn:active { background: var(--booster-brand-green-active); }
+  .promo-btn :global(svg) { display: block; width: 12px; height: 12px; flex-shrink: 0; }
+  /* Centered decoration. Its bottom overhangs the block's bottom edge by a
+   * few px (into the transparent strip below the block — the extra window
+   * height in POPUP_H makes room), and its top rises across the gap onto the
+   * panel. Below title/button (z1 < z2), above panel + block bg.
+   * Height/offset tuned live against the mockup. */
+  .promo-money {
+    position: absolute;
+    left: 50%;
+    bottom: -5px;
+    transform: translateX(-50%);
+    height: 68px;
+    z-index: 1;
+    pointer-events: none;
+    user-select: none;
+    -webkit-user-select: none;
   }
 </style>

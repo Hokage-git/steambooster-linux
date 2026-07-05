@@ -11,6 +11,7 @@ export const URLS = {
   balanceCalcApi:     'https://steambalance.cc/api/balance/calc',
   balanceAddApi:      'https://steambalance.cc/api/balance/add',
   orders:             'https://steambalance.cc/booster/orders',
+  catalog:            'https://steambalance.cc/booster/catalog',
   faq:                'https://steambalance.cc/booster/faq',
   terms:              'https://steambalance.cc/booster/terms',
   privacy:            'https://steambalance.cc/booster/privacy',

@@ -16,7 +16,7 @@
 //   (bridge.ts test), pendingPay state-machine (state.test.ts).
 // - New: brand-token survival, NO webfont shipped (popup inherits Steam's
 //   runtime Motiva Sans), Svelte scoped class hash, inline SVG markers,
-//   prod < dev size, prod ≤ 120 KB cap.
+//   prod < dev size, prod ≤ 140 KB cap.
 //
 // Behavioral coverage retained elsewhere:
 // - Calc API debounce 400ms, monotonic calcId, x-booster headers + no
@@ -130,6 +130,23 @@ test('all user-visible Russian labels survive minify', () => {
     expect(html).toContain('ТЕЛЕГРАМ');
     expect(html).toContain('СОГЛАШЕНИЕ');
     expect(html).toContain('ПОЛИТИКА');
+    // Promo block below the popup
+    expect(html).toContain('Игры дешевле');
+    expect(html).toContain('Каталог');
+  }
+});
+
+// Promo block inlined assets ----------------------------------------------
+
+test('promo money illustration (webp) + catalog chevron SVG are inlined', () => {
+  for (const html of [popupHtmlDev, popupHtmlProd]) {
+    // Money illustration ships as an inline WebP data-URI (smaller than PNG
+    // for a glossy alpha image; keeps the popup under its size cap).
+    expect(html).toContain('data:image/webp');
+    // catalog-arrow.svg path marker — proves the chevron is inlined via the
+    // __SB_ICON_CATALOG_ARROW__ define (not present in unit tests where the
+    // define is stubbed empty).
+    expect(html).toContain('M7.42773 6');
   }
 });
 
@@ -212,7 +229,10 @@ test('production HTML smaller than dev', () => {
   expect(popupHtmlProd.length).toBeLessThan(popupHtmlDev.length);
 });
 
-// Bundle size cap (POPUP_HTML_MAX_BYTES = 256 KB framework-side; we cap 120 KB)
-test('production popup HTML ≤ 120 KB', () => {
-  expect(popupHtmlProd.length).toBeLessThan(120 * 1024);
+// Bundle size cap (POPUP_HTML_MAX_BYTES = 256 KB framework-side; we cap 140 KB).
+// Raised 120 → 140 KB when the checkout promo block inlined its money
+// illustration (WebP, ~13 KB base64) below the popup; still far under the
+// framework hard cap.
+test('production popup HTML ≤ 140 KB', () => {
+  expect(popupHtmlProd.length).toBeLessThan(140 * 1024);
 });

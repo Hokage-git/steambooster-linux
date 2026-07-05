@@ -311,6 +311,14 @@ export function postOpenDoc(doc: 'terms' | 'privacy' | 'faq'): void {
   bc.postMessage({ kind: 'popup-message', popupId: POPUP_ID, data: { kind: 'open-doc', doc } });
 }
 
+// Promo «Каталог» button → main shell navigates the MAIN Steam window to the
+// catalog URL (sb.steam.openUrl → MainWindowBrowserManager.LoadURL). The URL
+// itself is owned by the main-shell (URLS.catalog); the popup only signals intent.
+export function postOpenCatalog(): void {
+  if (!bc) return;
+  bc.postMessage({ kind: 'popup-message', popupId: POPUP_ID, data: { kind: 'open-catalog' } });
+}
+
 // PayErrorModal's «FAQ» — тонкий алиас над единым open-doc путём.
 export function postFaq(): void {
   postOpenDoc('faq');

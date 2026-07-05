@@ -16,7 +16,9 @@ declare const __SB_ICON_SAFETY__:        string;
 declare const __SB_ICON_SETTINGS__:      string;
 declare const __SB_ICON_SUPPORT__:       string;
 declare const __SB_ICON_TELEGRAM__:      string;
+declare const __SB_ICON_CATALOG_ARROW__: string;
 declare const __SB_IMG_LOGO_DATA_URI__:  string;
+declare const __SB_IMG_MONEY_DATA_URI__: string;
 
 // Consumers:
 //   Footer       → ICON_SAFETY
@@ -38,4 +40,6 @@ export const ICON_SAFETY       = __SB_ICON_SAFETY__;
 export const ICON_SETTINGS     = __SB_ICON_SETTINGS__;
 export const ICON_SUPPORT      = __SB_ICON_SUPPORT__;
 export const ICON_TELEGRAM     = __SB_ICON_TELEGRAM__;
+export const ICON_CATALOG_ARROW = __SB_ICON_CATALOG_ARROW__;
 export const IMG_LOGO_DATA_URI = __SB_IMG_LOGO_DATA_URI__;
+export const IMG_MONEY_DATA_URI = __SB_IMG_MONEY_DATA_URI__;

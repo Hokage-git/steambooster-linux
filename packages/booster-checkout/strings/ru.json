@@ -11,6 +11,10 @@
       "terms_window_title": "Пользовательское соглашение — SteamBalance",
       "privacy_window_title": "Политика конфиденциальности — SteamBalance"
     },
+    "promo": {
+      "title":  "Игры дешевле",
+      "button": "Каталог"
+    },
     "header": {
       "menu_button": "МЕНЮ"
     },
