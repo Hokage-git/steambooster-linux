@@ -1,18 +1,21 @@
 // Single source of truth for the plugin's eligibility urlPatterns. Imported by
-// BOTH index.ts (the sb.plugins.register bundle metadata) and plugin-meta.ts
-// (which the build emits into the manifest sidecar). The framework's
-// crossValidate requires bundle.urlPatterns ⊆ manifest.urlPatterns by STRING
-// equality, so these two lists must be byte-identical — sharing one constant
-// makes drift impossible.
+// BOTH index.ts (sb.plugins.register bundle metadata) and plugin-meta.ts
+// (manifest sidecar). crossValidate requires bundle.urlPatterns ⊆
+// manifest.urlPatterns by STRING equality — one shared constant makes drift
+// impossible.
 //
-// Trailing `([/?#].*)?$` (not `(/.*)?$`): the framework checks eligibility ONCE
-// at bootstrap against location.href. Steam opens an /app/ page reached from the
-// store home at `app/<id>?snr=...` — a query string BEFORE the SEO slug is added
-// client-side — so the pattern must accept a `?` or `#` (not only `/`) right
-// after the path. Without this, such pages fail the gate and the plugin (topup
-// bar + keys offer) never mounts. See tests/url-patterns.test.ts.
+// WHOLE-SITE match: the plugin is eligible on ANY store.steampowered.com page.
+// The framework checks eligibility ONCE at bootstrap against location.href
+// (bootstrap.ts::filterEligiblePlugins), so a narrow gate would skip the plugin
+// entirely on a session that entered at the store home / wishlist / search —
+// where the catalog store-nav button must still appear. Per-feature
+// scoping (topup bar → /addfunds, keys offer → /app/<id>, cart → /cart,
+// catalog button → all store pages) is done INSIDE the plugin via sb.pages.
+//
+// Shape note: `(/.*)?$`, NOT the `([/?#].*)?$` tail used on concrete-path
+// patterns — as a whole-site matcher that tail would match ONLY the bare home
+// and fail on `/wishlist`, `/search`, `/app/…`. The anchored `$` + optional
+// `/…` also rejects the `store.steampowered.com.evil.com` suffix attack.
 export const ADDFUNDS_URL_PATTERNS: string[] = [
-  '^https://store\\.steampowered\\.com/steamaccount/addfunds([/?#].*)?$',
-  '^https://store\\.steampowered\\.com/app/\\d+([/?#].*)?$',
-  '^https://store\\.steampowered\\.com/cart/?($|\\?|#)',
+  '^https://store\\.steampowered\\.com(/.*)?$',
 ];

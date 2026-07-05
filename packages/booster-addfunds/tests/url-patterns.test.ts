@@ -11,29 +11,22 @@ import { pluginMeta } from '../src/plugin-meta';
 const matchesAny = (url: string): boolean =>
   pluginMeta.urlPatterns.some((p) => new RegExp(p).test(url));
 
-test('app urlPattern matches /app/ pages including the query-first (no-slug) form', () => {
-  expect(matchesAny('https://store.steampowered.com/app/2114740/Blasphemous_2/')).toBe(true);
-  expect(matchesAny('https://store.steampowered.com/app/2114740')).toBe(true);
-  expect(matchesAny('https://store.steampowered.com/app/2114740/')).toBe(true);
-  expect(matchesAny('https://store.steampowered.com/app/2114740?snr=1_4_4__40_1')).toBe(true); // regression guard
-  expect(matchesAny('https://store.steampowered.com/app/2114740#section')).toBe(true);
+test('matches all store.steampowered.com pages (whole-site eligibility)', () => {
+  for (const u of [
+    'https://store.steampowered.com/',
+    'https://store.steampowered.com/wishlist/',
+    'https://store.steampowered.com/search/?term=x',
+    'https://store.steampowered.com/app/2114740/Blasphemous_2/',
+    'https://store.steampowered.com/app/2114740?snr=1_4_4__40_1',
+    'https://store.steampowered.com/steamaccount/addfunds',
+    'https://store.steampowered.com/cart/',
+    'https://store.steampowered.com',
+  ]) expect(matchesAny(u)).toBe(true);
 });
 
-test('addfunds urlPattern matches the addfunds page including the query form', () => {
-  expect(matchesAny('https://store.steampowered.com/steamaccount/addfunds')).toBe(true);
-  expect(matchesAny('https://store.steampowered.com/steamaccount/addfunds/')).toBe(true);
-  expect(matchesAny('https://store.steampowered.com/steamaccount/addfunds?from=email')).toBe(true);
-});
-
-test('cart urlPattern matches /cart/ with optional query/hash', () => {
-  expect(matchesAny('https://store.steampowered.com/cart/')).toBe(true);
-  expect(matchesAny('https://store.steampowered.com/cart')).toBe(true);
-  expect(matchesAny('https://store.steampowered.com/cart/?foo=1')).toBe(true);
-});
-
-test('urlPatterns do NOT over-match unrelated paths', () => {
-  expect(matchesAny('https://store.steampowered.com/')).toBe(false);
-  expect(matchesAny('https://store.steampowered.com/appdata/123')).toBe(false); // not /app/
-  expect(matchesAny('https://store.steampowered.com/app/abc')).toBe(false);     // non-numeric id
-  expect(matchesAny('https://evil.com/app/123')).toBe(false);                   // wrong host
+test('does NOT match other hosts or look-alike suffixes', () => {
+  expect(matchesAny('https://steamcommunity.com/')).toBe(false);
+  expect(matchesAny('https://evil.com/app/123')).toBe(false);
+  expect(matchesAny('https://store.steampowered.com.evil.com/')).toBe(false);
+  expect(matchesAny('http://store.steampowered.com/')).toBe(false); // http, not https
 });

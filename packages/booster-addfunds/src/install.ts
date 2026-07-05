@@ -2,6 +2,7 @@ import type { PluginContext } from '@steambalance/booster-framework';
 import { registerAddFundsPage } from './pages/addfunds';
 import { registerAppPage } from './pages/app';
 import { registerCartPage } from './pages/cart';
+import { registerCatalogNav } from './pages/catalog-nav';
 import { createKeysClient } from './lib/keys-client';
 
 /**
@@ -34,6 +35,7 @@ export async function installAddFundsWeb(ctx: PluginContext): Promise<() => void
   registerAddFundsPage(sb);
   registerAppPage(sb, { keysClient });
   registerCartPage(sb);
+  registerCatalogNav(sb);
   // Page lifecycle is owned by sb.pages.register internally; no manual cleanup needed
   // here (the plugin scope abort propagates to all page registrations).
   // Future: registerOtherStorePages(sb) here.

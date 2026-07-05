@@ -524,8 +524,8 @@ describe('registerAddFundsPage', () => {
     // Regression: the returned teardown is a documented no-op — pages/bus
     // teardown is scope-abort bound (owned by sb.pages.register /
     // sb.bus.subscribe), not by this function. install() must register the
-    // addfunds, app, and cart pages and hand back a callable that does not
-    // throw when invoked.
+    // addfunds, app, cart, and catalog-nav pages and hand back a callable
+    // that does not throw when invoked.
     const { sb, pageReg } = makeSbStub();
     const ctx = { sb, log: { info: () => {}, warn: () => {}, error: () => {} } } as any;
     const teardown = await installAddFundsWeb(ctx);
@@ -533,6 +533,7 @@ describe('registerAddFundsPage', () => {
       'booster-addfunds',
       'booster-addfunds-app',
       'booster-addfunds-cart',
+      'booster-addfunds-catalog-nav',
     ]);
     expect(typeof teardown).toBe('function');
     expect(() => teardown()).not.toThrow();
