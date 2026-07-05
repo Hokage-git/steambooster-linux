@@ -6,6 +6,7 @@ import type { BaseTranslation } from 'typesafe-i18n';
 const ru = {
   addfunds: {
     cart_heading: 'Вам не хватает баланса',
+    catalog_menu_item: 'Каталог игр',
     edition_offer_aria_label: 'Предложение SteamBalance — купить дешевле',
     edition_offer_soon_badge: 'СКОРО',
     keys_block_aria_label: 'Доступные ключи для покупки в вашем регионе',

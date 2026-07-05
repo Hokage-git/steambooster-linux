@@ -9,7 +9,7 @@ export const pluginMeta: PluginMeta = {
   id: 'booster-addfunds',
   version: '0.0.0',
   apiVersion: 1,
-  contextKinds: ['web'],
+  contextKinds: ['web', 'main'],
   // Shared with index.ts via ./url-patterns so the bundle's register() patterns
   // and this manifest-sidecar source stay byte-identical (crossValidate subset).
   urlPatterns: ADDFUNDS_URL_PATTERNS,

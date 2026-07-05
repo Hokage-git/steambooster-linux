@@ -21,7 +21,8 @@
     "keys_email_modal_cancel":    "Отмена",
     "keys_email_modal_invalid":   "Введите корректный email",
     "keys_error_modal_title":     "Упс!",
-    "keys_error_modal_close":     "Закрыть"
+    "keys_error_modal_close":     "Закрыть",
+    "catalog_menu_item":          "Каталог игр"
   },
   "general": {
     "product_display_name": "SteamBooster"
