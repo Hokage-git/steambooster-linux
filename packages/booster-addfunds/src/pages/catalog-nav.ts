@@ -1,6 +1,6 @@
 import type { SbApi } from '@steambalance/booster-framework/api-types';
 import { SB_SWIRL_SVG } from '../lib/icons';
-import { CATALOG_URL } from '../urls';
+import { STORE_NAV_CATALOG_URL } from '../urls';
 import { LL } from '../i18n';
 
 // Registers the persistent catalog button into the Steam store top-nav bar
@@ -21,7 +21,7 @@ export function registerCatalogNav(sb: SbApi): void {
         id: 'booster-catalog-nav',
         label: LL.addfunds.catalog_menu_item(),
         icon: SB_SWIRL_SVG,
-        url: CATALOG_URL,
+        url: STORE_NAV_CATALOG_URL,
         variant: 'brand',
         placement: 'start',
       });

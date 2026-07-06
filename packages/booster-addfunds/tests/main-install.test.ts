@@ -4,7 +4,7 @@
 
 import { test, expect } from 'bun:test';
 import { installAddFundsMain } from '../src/main/install';
-import { CATALOG_URL } from '../src/urls';
+import { STORE_MENU_CATALOG_URL } from '../src/urls';
 import { LL } from '../src/i18n';
 
 interface Ctx {
@@ -43,7 +43,7 @@ test('adds the catalog item to the store menu with the brand variant', async () 
   expect(calls).toHaveLength(1);
   expect(calls[0].menu).toBe('store');
   expect(calls[0].id).toBe('booster-catalog');
-  expect(calls[0].url).toBe(CATALOG_URL);
+  expect(calls[0].url).toBe(STORE_MENU_CATALOG_URL);
   expect(calls[0].variant).toBe('brand');
   expect(calls[0].placement).toBe('top');
   expect(calls[0].label).toBe(LL.addfunds.catalog_menu_item());

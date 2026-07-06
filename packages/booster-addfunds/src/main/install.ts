@@ -1,6 +1,6 @@
 import type { PluginContext, MenuItemHandle } from '@steambalance/booster-framework';
 import { SB_SWIRL_SVG } from '../lib/icons';
-import { CATALOG_URL } from '../urls';
+import { STORE_MENU_CATALOG_URL } from '../urls';
 import { LL } from '../i18n';
 
 /**
@@ -35,7 +35,7 @@ export async function installAddFundsMain(ctx: PluginContext): Promise<() => voi
         menu: 'store',
         label: LL.addfunds.catalog_menu_item(),
         icon: SB_SWIRL_SVG,
-        url: CATALOG_URL,
+        url: STORE_MENU_CATALOG_URL,
         variant: 'brand',
         placement: 'top',
       });

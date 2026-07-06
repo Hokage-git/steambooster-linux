@@ -17,3 +17,8 @@ test('URLS.telegram is the brand telegram channel link', () => {
   expect(URLS.telegram).toBe('https://steambalance.cc/c/0eb9');
   expect(URLS.telegram.startsWith('https://')).toBe(true);
 });
+
+test('URLS.catalog is the promo catalog tracking link', () => {
+  expect(URLS.catalog).toBe('https://steambalance.cc/c/b810');
+  expect(URLS.catalog.startsWith('https://')).toBe(true);
+});

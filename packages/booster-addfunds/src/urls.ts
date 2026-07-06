@@ -2,8 +2,13 @@
 // hardcode their own URLs here; framework code never hardcodes URLs.
 
 /** SteamBalance games catalog, opened in the main Steam window from the
- *  "Каталог игр" item injected into Steam's МАГАЗИН supernav. */
-export const CATALOG_URL = 'https://steambalance.cc/booster/catalog';
+ *  catalog item injected into Steam's store supernav dropdown (main context,
+ *  main/install.ts). */
+export const STORE_MENU_CATALOG_URL = 'https://steambalance.cc/c/e6c5';
+
+/** SteamBalance games catalog, opened from the persistent catalog button in the
+ *  Steam store page top-nav bar (page context, pages/catalog-nav.ts). */
+export const STORE_NAV_CATALOG_URL = 'https://steambalance.cc/c/a3bd';
 
 /** Backend endpoint for the region-games carousel, fetched via sb.net. */
 export const CATALOGUE_API = 'https://steambalance.cc/api/booster/catalogue';

@@ -1,6 +1,6 @@
 import { test, expect } from 'bun:test';
 import { registerCatalogNav } from '../src/pages/catalog-nav';
-import { CATALOG_URL } from '../src/urls';
+import { STORE_NAV_CATALOG_URL } from '../src/urls';
 
 function makeSb() {
   const registered: any[] = [];
@@ -25,7 +25,7 @@ test('registers a store-wide page that adds the catalog nav button', () => {
   const cleanup = registered[0].mount({ url: new URL('https://store.steampowered.com/'), signal: new AbortController().signal });
   expect(navCalls).toHaveLength(1);
   expect(navCalls[0]).toMatchObject({
-    id: 'booster-catalog-nav', url: CATALOG_URL, variant: 'brand', placement: 'start',
+    id: 'booster-catalog-nav', url: STORE_NAV_CATALOG_URL, variant: 'brand', placement: 'start',
   });
   expect(navCalls[0].label.length).toBeGreaterThan(0);
   expect(typeof cleanup).toBe('function');
