@@ -8,14 +8,14 @@ export interface KeysOrderResult { ok: boolean; redirectUrl?: string; uid?: stri
 
 export async function postKeysOrder(
   sb: SbApi,
-  args: { paymentId: string; itemId: number; account: string },
+  args: { paymentId: string; itemId: number; account: string; login: string },
   fetchImpl: typeof fetch = fetch,
 ): Promise<KeysOrderResult> {
   try {
     const r = await fetchImpl(URLS.steamKeysApi, {
       method: 'POST',
       headers: getBoosterHeaders(sb, 'application/json'),
-      body: JSON.stringify({ paymentId: args.paymentId, itemId: args.itemId, account: args.account }),
+      body: JSON.stringify({ paymentId: args.paymentId, itemId: args.itemId, account: args.account, login: args.login }),
     });
     const body = await r.json().catch(() => ({})) as Record<string, unknown>;
     const data = (body.data && typeof body.data === 'object') ? body.data as Record<string, unknown> : {};

@@ -81,6 +81,42 @@ describe('installKeysBridge', () => {
     expect((res!.data as any)).toMatchObject({ reqId: 'p1', ok: true });
   });
 
+  test('purchase sends steam login (accountName) alongside the email in the order body', async () => {
+    const bus = makeBus();
+    const payments = { success: true, data: [{ value: 'p', can_pay_services: true, disabled: false }] };
+    const order = { success: true, data: { redirectUrl: 'https://pay/x', uid: 'u' } };
+    let postBody: any;
+    const fetchImpl = (async (_u: string, init?: { method?: string; body?: string }) => {
+      if ((init?.method ?? 'GET') === 'POST') { postBody = JSON.parse(init!.body as string); return { ok: true, status: 200, json: async () => order }; }
+      return { ok: true, status: 200, json: async () => payments };
+    }) as any;
+    installKeysBridge(makeSb(bus, { email: 'a@b.c' }), { openPayment: async () => true, fetchImpl });
+    bus.publish('booster-addfunds.keys.purchase', { reqId: 'p1', itemId: 7 });
+    await new Promise((r) => setTimeout(r, 5));
+    expect(postBody).toMatchObject({ account: 'a@b.c', login: 'tester' });
+  });
+
+  test('null steam user (cold start) with a bus email still proceeds, sends login: ""', async () => {
+    // Reachable path: addfunds forwards a typed email over the bus (so `account` is
+    // truthy, email-required is skipped) while getCurrentUser() is still null in the
+    // ~100ms snapshot window / post-rollback. Purchase must NOT block — login: ''.
+    const bus = makeBus();
+    const payments = { success: true, data: [{ value: 'p', can_pay_services: true, disabled: false }] };
+    const order = { success: true, data: { redirectUrl: 'https://pay/x', uid: 'u' } };
+    let postBody: any;
+    const fetchImpl = (async (_u: string, init?: { method?: string; body?: string }) => {
+      if ((init?.method ?? 'GET') === 'POST') { postBody = JSON.parse(init!.body as string); return { ok: true, status: 200, json: async () => order }; }
+      return { ok: true, status: 200, json: async () => payments };
+    }) as any;
+    const sb = { version: '1', bus, steam: { getStoreCountry: async () => undefined, getCurrentUser: () => null } } as any;
+    let opened = false;
+    installKeysBridge(sb, { openPayment: async () => { opened = true; return true; }, fetchImpl });
+    bus.publish('booster-addfunds.keys.purchase', { reqId: 'p1', itemId: 7, email: 'typed@user.com' });
+    await new Promise((r) => setTimeout(r, 5));
+    expect(postBody).toMatchObject({ account: 'typed@user.com', login: '' });
+    expect(opened).toBe(true);
+  });
+
   test('successful order persists its uid via onOrderUid before opening payment', async () => {
     const bus = makeBus();
     const payments = { success: true, data: [{ value: 'p', can_pay_services: true, disabled: false }] };

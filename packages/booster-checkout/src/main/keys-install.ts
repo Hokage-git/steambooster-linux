@@ -1,4 +1,4 @@
-import type { SbApi } from '@steambalance/booster-framework/api-types';
+import type { SbApi, SteamUser } from '@steambalance/booster-framework/api-types';
 import { resolveKeysPaymentId } from './keys-payment';
 import { fetchKeys } from './keys-fetch';
 import { postKeysOrder } from './keys-order';
@@ -32,12 +32,9 @@ function sanitizeTitle(x: unknown): string | undefined {
   return typeof x === 'string' && x.length >= TITLE_MIN && x.length <= TITLE_MAX ? x : undefined;
 }
 
-async function resolveSteamEmail(sb: SbApi): Promise<string | undefined> {
-  // Sync getter (not getCurrentUserAsync, which never resolves with no snapshot —
-  // it would leak a pending promise on a not-logged-in shell). Null user → no email.
-  const u = sb.steam.getCurrentUser();
-  if (!u) return undefined;
-  try { return (await u.email()) || undefined; } catch { return undefined; }
+async function resolveSteamEmail(user: SteamUser | null): Promise<string | undefined> {
+  if (!user) return undefined;
+  try { return (await user.email()) || undefined; } catch { return undefined; }
 }
 
 export function installKeysBridge(sb: SbApi, deps: KeysBridgeDeps): () => void {
@@ -69,11 +66,18 @@ export function installKeysBridge(sb: SbApi, deps: KeysBridgeDeps): () => void {
         title: sanitizeTitle(d.windowTitle),
         taskbarTitle: sanitizeTitle(d.windowTaskbarTitle),
       };
-      const account = (typeof d.email === 'string' && d.email) ? d.email : await resolveSteamEmail(sb);
+      // Sync getter (not getCurrentUserAsync, which never resolves with no snapshot —
+      // it would leak a pending promise on a not-logged-in shell). One read → a
+      // consistent email + login pair from the same snapshot.
+      const user = sb.steam.getCurrentUser();
+      const account = (typeof d.email === 'string' && d.email) ? d.email : await resolveSteamEmail(user);
       if (!account) { sb.bus.publish('booster-checkout.keys.email-required', { reqId }); return; }
       const paymentId = await resolveKeysPaymentId(sb, fetchImpl);
       if (!paymentId) { sb.bus.publish('booster-checkout.keys.purchase-result', { reqId, ok: false, error: 'no-payment' }); return; }
-      const res = await postKeysOrder(sb, { paymentId, itemId, account }, fetchImpl);
+      // Steam login (accountName) — always sent alongside the email `account`;
+      // empty string on the rare null-user window (never blocks the purchase).
+      const login = user?.accountName ?? '';
+      const res = await postKeysOrder(sb, { paymentId, itemId, account, login }, fetchImpl);
       if (!res.ok || !res.redirectUrl) { sb.bus.publish('booster-checkout.keys.purchase-result', { reqId, ok: false, error: res.error, message: res.message }); return; }
       if (res.uid) deps.onOrderUid?.(res.uid);
       const opened = await deps.openPayment(res.redirectUrl, titles);
