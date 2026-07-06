@@ -15,3 +15,10 @@ export const WINDOWS_SVG =
 // Thin close (×) mark for the modal corner button.
 export const CLOSE_SVG =
   '<svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true"><path fill="currentColor" d="M1.4.3.3 1.4 4.9 6 .3 10.6l1.1 1.1L6 7.1l4.6 4.6 1.1-1.1L7.1 6l4.6-4.6L10.6.3 6 4.9z"/></svg>';
+
+// SteamBalance two-tone brand mark, shown in the region-games carousel header.
+export const SB_LOGO_TWOTONE_SVG =
+  '<svg width="30" height="24" viewBox="0 0 30 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">'
+  + '<path d="M0 8.73079C0 3.9089 3.94941 0 8.82125 0H17.5181L14.5473 4.61538H8.82125C6.52481 4.61538 4.66321 6.45789 4.66321 8.73079C4.66321 11.0036 6.52481 12.8461 8.82125 12.8461H17.2188L10.0393 24H4.51021L8.71919 17.4609C3.89438 17.4069 0 13.5189 0 8.73079Z" fill="#664CFE"/>'
+  + '<path d="M21.1788 11.1538C23.4752 11.1538 25.3368 12.9963 25.3368 15.2692C25.3368 17.5421 23.4752 19.3846 21.1788 19.3846H15.4504L12.4796 24H21.1788C26.0506 24 30 20.0911 30 15.2692C30 10.4803 26.1044 6.5919 21.2785 6.53898L25.4874 0H19.9583L12.7789 11.1538H21.1788Z" fill="#42D299"/>'
+  + '</svg>';

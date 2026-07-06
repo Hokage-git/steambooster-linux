@@ -13,12 +13,14 @@ export const pluginMeta: PluginMeta = {
   // Shared with index.ts via ./url-patterns so the bundle's register() patterns
   // and this manifest-sidecar source stay byte-identical (crossValidate subset).
   urlPatterns: ADDFUNDS_URL_PATTERNS,
-  grantedCapabilities: ['ui', 'steam', 'configs', 'bus', 'pages'],
+  grantedCapabilities: ['ui', 'steam', 'configs', 'bus', 'pages', 'net'],
+  allowedHosts: ['steambalance.cc'],
   subscribeTopics: [
     'booster-checkout.keys.response',
     'booster-checkout.keys.email-required',
     'booster-checkout.keys.purchase-result',
     'booster-checkout.keys.ready',
     'booster-checkout.user.snapshot',
+    'booster-checkout.keys.config',
   ],
 };

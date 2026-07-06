@@ -9,11 +9,13 @@ export const pluginMeta: PluginMeta = {
   apiVersion: 1,
   contextKinds: ['main'],
   urlPatterns: [],
-  grantedCapabilities: ['ui', 'steam', 'configs', 'bus', 'keys'],
+  grantedCapabilities: ['ui', 'steam', 'configs', 'bus', 'keys', 'net'],
+  allowedHosts: ['steambalance.cc'],
   subscribeTopics: [
     'booster-addfunds.topup-requested',
     'booster-addfunds.user.snapshot.request',
     'booster-addfunds.keys.request',
     'booster-addfunds.keys.purchase',
+    'booster-addfunds.keys.config.request',
   ],
 };

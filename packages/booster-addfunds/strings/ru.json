@@ -22,7 +22,9 @@
     "keys_email_modal_invalid":   "Введите корректный email",
     "keys_error_modal_title":     "Упс!",
     "keys_error_modal_close":     "Закрыть",
-    "catalog_menu_item":          "Каталог игр"
+    "catalog_menu_item":          "Каталог игр",
+    "region_games_title":         "Игры недоступные в регионе",
+    "region_games_aria_label":    "Игры недоступные в регионе"
   },
   "general": {
     "product_display_name": "SteamBooster"

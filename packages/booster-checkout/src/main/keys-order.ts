@@ -1,5 +1,4 @@
 import type { SbApi } from '@steambalance/booster-framework/api-types';
-import { getBoosterHeaders } from './headers';
 import { URLS } from '../urls';
 
 // `message` is a human, server-supplied (RU) string safe to show the user.
@@ -9,12 +8,11 @@ export interface KeysOrderResult { ok: boolean; redirectUrl?: string; uid?: stri
 export async function postKeysOrder(
   sb: SbApi,
   args: { paymentId: string; itemId: number; account: string; login: string },
-  fetchImpl: typeof fetch = fetch,
 ): Promise<KeysOrderResult> {
   try {
-    const r = await fetchImpl(URLS.steamKeysApi, {
+    const r = await sb.net.fetch(URLS.steamKeysApi, {
       method: 'POST',
-      headers: getBoosterHeaders(sb, 'application/json'),
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ paymentId: args.paymentId, itemId: args.itemId, account: args.account, login: args.login }),
     });
     const body = await r.json().catch(() => ({})) as Record<string, unknown>;
@@ -25,7 +23,7 @@ export async function postKeysOrder(
       ?? (typeof body.uid === 'string' ? body.uid : undefined);
     if (!r.ok || body.success === false || !redirectUrl) {
       const message = typeof body.message === 'string' && body.message.trim() ? body.message.trim() : undefined;
-      return { ok: false, error: `http-${r.status ?? '?'}`, message };
+      return { ok: false, error: `http-${r.status}`, message };
     }
     return { ok: true, redirectUrl, uid };
   } catch (e) {

@@ -33,6 +33,7 @@ async function buildOnce(): Promise<void> {
   const topupCss = await loadCss(resolve(import.meta.dir, 'src/components/topup-bar.css'), isProd);
   const keysCss = await loadCss(resolve(import.meta.dir, 'src/components/keys-block.css'), isProd);
   const editionOfferCss = await loadCss(resolve(import.meta.dir, 'src/components/edition-offer-chip.css'), isProd);
+  const regionGamesCss = await loadCss(resolve(import.meta.dir, 'src/components/region-games-block.css'), isProd);
 
   const result = await build({
     entrypoints: ['src/index.ts'],
@@ -47,6 +48,7 @@ async function buildOnce(): Promise<void> {
       __SB_TOPUP_CSS__:              JSON.stringify(topupCss),
       __SB_KEYS_CSS__:               JSON.stringify(keysCss),
       __SB_EDITION_OFFER_CSS__:      JSON.stringify(editionOfferCss),
+      __SB_REGION_GAMES_CSS__:       JSON.stringify(regionGamesCss),
       __SB_PLUGIN_VERSION__:         JSON.stringify(version),
       __SB_PRODUCTION__:             JSON.stringify(isProd),
     },

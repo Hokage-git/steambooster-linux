@@ -4,6 +4,7 @@ import { registerAppPage } from './pages/app';
 import { registerCartPage } from './pages/cart';
 import { registerCatalogNav } from './pages/catalog-nav';
 import { createKeysClient } from './lib/keys-client';
+import { ensureKeysConfigService } from './lib/keys-config';
 
 /**
  * Web-context plugin entry point. Installed by the plugin runner when
@@ -27,10 +28,17 @@ export async function installAddFundsWeb(ctx: PluginContext): Promise<() => void
   // future modules can subscribe to.
   await sb.lifecycle.ready();
 
+  // Cached checkout paymentId/storeCountry broadcast (see lib/keys-config.ts) —
+  // wired into the keys client so requestKeys can fetch directly via sb.net
+  // instead of the booster-addfunds.keys.request bus round-trip. Created here
+  // (not lazily inside keys-client.ts) so the cold-boot nudge
+  // (booster-addfunds.keys.config.request) fires as early as possible.
+  const keysConfig = ensureKeysConfigService(sb);
+
   // One keys client per install, shared by the App page (region keys block +
   // edition-offer chips). Its bus subscriptions are scope-abort bound; dispose()
   // in the teardown unwinds them eagerly for cleanliness.
-  const keysClient = createKeysClient(sb);
+  const keysClient = createKeysClient(sb, { keysConfig });
 
   registerAddFundsPage(sb);
   registerAppPage(sb, { keysClient });

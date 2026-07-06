@@ -41,8 +41,11 @@ import { openErrorModal as realOpenErrorModal } from '../components/error-modal'
 import { buildTopupBar, ensureTopupStyles } from '../components/topup-bar';
 import { ensureSnapshotService, type UserSnapshot } from '../lib/user-snapshot';
 import { currencySym, defaultAmountForCurrency } from '../lib/currency';
-import { waitForElement } from '../lib/wait-for-element';
+import { waitForElement, waitForElementBy } from '../lib/wait-for-element';
 import { LL } from '../i18n';
+import { fetchCatalogue as realFetchCatalogue, readCache, writeCache, decide, type Item } from '../lib/catalogue-api';
+import { buildRegionGamesBlock, ensureRegionGamesStyles } from '../components/region-games-block';
+import { REGION_GAMES_PROMO_URL } from '../urls';
 
 // Build-time-inlined PNG logo (data:image/png;base64,…). Bypasses
 // store.steampowered.com's img-src CSP that would block our CDN URL. Resolved via
@@ -71,12 +74,17 @@ interface AppPageDeps {
   openEmailModal?: () => Promise<string | null>;
   /** Purchase-error modal seam. Default: the real `openErrorModal`. */
   openErrorModal?: (message: string) => void;
+  /** Catalogue-fetch seam (region-games carousel). Default: the real `fetchCatalogue`. */
+  fetchCatalogue?: typeof realFetchCatalogue;
+  /** Clock seam for the region-games cache decision. Default: `Date.now`. */
+  now?: () => number;
 }
 
 export function registerAppPage(sb: SbApi, deps: AppPageDeps = {}): void {
   const keysClient = deps.keysClient ?? createKeysClient(sb);
   const openEmailModal = deps.openEmailModal ?? realOpenEmailModal;
   const openErrorModal = deps.openErrorModal ?? realOpenErrorModal;
+  const fetchCatalogue = deps.fetchCatalogue ?? realFetchCatalogue;
   const snap = ensureSnapshotService(sb);
 
   // Drive a key purchase from either the chip or a keys-block row. The handle's
@@ -230,6 +238,60 @@ export function registerAppPage(sb: SbApi, deps: AppPageDeps = {}): void {
     return () => { for (const t of teardowns) t(); };
   }
 
+  // Region-games carousel ("Игры недоступные в регионе") — anchored as the
+  // first child of the RIGHT META column (`.rightcol.game_meta_data`, the one
+  // holding "Может ли эта игра вам понравиться?"), fed by catalogue-api's fetch
+  // + 10-min localStorage cache. NB: an /app/ page has multiple `.rightcol`
+  // elements (the top glance column + the meta column + an empty responsive
+  // duplicate), so a bare `.rightcol` matches the wrong one — target
+  // `.rightcol.game_meta_data` and skip the empty duplicate by requiring
+  // children. Structurally non-throwing: any failure here must never strand
+  // mountNormal's own teardown (see the allSettled combine in the page mount).
+  async function mountRegionGames(ctx: PageContext): Promise<(() => void) | void> {
+    try {
+      const col = await waitForElementBy<HTMLElement>(
+        () => [...document.querySelectorAll<HTMLElement>('.rightcol.game_meta_data')]
+          .find((c) => c.childElementCount > 0) ?? null,
+        ctx.signal,
+      );
+      if (!col || ctx.signal.aborted) return;
+      if (document.getElementById('booster-region-games')) return;
+      const now = (deps.now ?? (() => Date.now()))();
+      const cache = readCache();
+      const d = decide(now, cache);
+      let teardown: (() => void) | undefined;
+      const insert = (items: Item[]): void => {
+        if (ctx.signal.aborted || document.getElementById('booster-region-games')) return;
+        ensureRegionGamesStyles();
+        const block = buildRegionGamesBlock(items, {
+          onBackgroundClick: () => { window.location.assign(REGION_GAMES_PROMO_URL); },
+        });
+        col.insertBefore(block, col.firstChild);
+        teardown = () => {
+          try { block.remove(); } catch { /* detached */ }
+          document.getElementById('booster-region-games-style')?.remove();
+        };
+      };
+      if (d.render) insert(d.render);
+      if (d.shouldFetch) {
+        const res = await fetchCatalogue(sb, ctx.signal);
+        if (ctx.signal.aborted) return teardown;
+        if (res.status === 'ok') {
+          writeCache({ items: res.items, fetchedAt: now, attemptedAt: now });
+          if (!teardown) insert(res.items);          // cold: first appearance
+          // already-shown: do NOT rebuild (avoid animation reset) — fresh items apply next mount
+        } else if (res.status === 'empty') {
+          writeCache({ items: [], fetchedAt: now, attemptedAt: now });
+          if (teardown) { teardown(); teardown = undefined; }  // hide-on-empty (client requirement)
+        } else { // error — ALWAYS stamp attemptedAt, even with NO prior cache (I2 backoff):
+          // a cold client during a backend outage must not refetch on every game page.
+          writeCache({ items: cache?.items ?? [], fetchedAt: cache?.fetchedAt ?? 0, attemptedAt: now });
+        }
+      }
+      return teardown;
+    } catch { return; }   // structurally non-throwing
+  }
+
   sb.pages.register({
     name: 'booster-addfunds-app',
     match: { url: /store\.steampowered\.com\/app\/\d+/ },
@@ -239,7 +301,13 @@ export function registerAppPage(sb: SbApi, deps: AppPageDeps = {}): void {
       }
       if (ctx.signal.aborted) return;
       if (detectRegionLock(document)) return mountRegion(ctx);
-      return mountNormal(ctx);
+      const results = await Promise.allSettled([mountNormal(ctx), mountRegionGames(ctx)]);
+      const teardowns = results
+        .filter((r): r is PromiseFulfilledResult<(() => void) | void> => r.status === 'fulfilled')
+        .map((r) => r.value)
+        .filter((v): v is () => void => typeof v === 'function');
+      if (teardowns.length === 0) return;
+      return () => { for (const t of teardowns) t(); };
     },
   });
 }

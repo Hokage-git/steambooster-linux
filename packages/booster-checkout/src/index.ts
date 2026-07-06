@@ -22,6 +22,7 @@ sb.plugins.register({
     Capability.Configs,
     Capability.Bus,
     Capability.Keys,
+    Capability.Net,
   ],
   async init(ctx: PluginContext): Promise<() => void> {
     if (ctx.contextKind !== ContextKind.Main) return () => {};

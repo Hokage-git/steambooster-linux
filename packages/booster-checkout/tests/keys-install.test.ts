@@ -2,17 +2,19 @@ import { describe, test, expect } from 'bun:test';
 import { installKeysBridge } from '../src/main/keys-install';
 import { appendOrderUid } from '../src/main/order-uids';
 
-// Method-aware fake for the purchase flow: GET → payment methods, POST → order
-// with the next scripted uid. Lets a single bridge handle N back-to-back
-// purchases without fighting the localStorage paymentId cache.
-function purchaseFetch(orderUids: Array<string | undefined>) {
+// Payments (resolveKeysPaymentId) is fetchImpl-served throughout this suite —
+// NOT migrated. Keys-list + order POST go through sb.net (see makeSb's `net`).
+const PAYMENTS_OK = { success: true, data: [{ value: 'p', can_pay_services: true, disabled: false }] };
+const paymentsFetch = (async () => ({ ok: true, status: 200, json: async () => PAYMENTS_OK })) as any;
+
+// sb.net.fetch fake serving N back-to-back order POSTs with scripted uids.
+// Lets a single bridge handle N back-to-back purchases without fighting the
+// localStorage paymentId cache.
+function orderNetFetch(orderUids: Array<string | undefined>) {
   let post = 0;
-  return (async (_url: string, init?: { method?: string }) => {
-    if ((init?.method ?? 'GET') === 'POST') {
-      const uid = orderUids[Math.min(post++, orderUids.length - 1)];
-      return { ok: true, status: 200, json: async () => ({ success: true, data: { redirectUrl: 'https://pay/x', ...(uid !== undefined ? { uid } : {}) } }) };
-    }
-    return { ok: true, status: 200, json: async () => ({ success: true, data: [{ value: 'p', can_pay_services: true, disabled: false }] }) };
+  return (async (_url: string, _init?: { method?: string }) => {
+    const uid = orderUids[Math.min(post++, orderUids.length - 1)];
+    return { ok: true, status: 200, headers: {}, json: async () => ({ success: true, data: { redirectUrl: 'https://pay/x', ...(uid !== undefined ? { uid } : {}) } }), text: async () => '' };
   }) as any;
 }
 
@@ -31,13 +33,22 @@ function makeBus() {
     },
   };
 }
-function makeSb(bus: any, opts: { email?: string; country?: string } = {}) {
+// Default `sb.net.fetch` — resolves keys-list to no items and any order POST
+// to a generic failure, unless a test overrides it via `opts.netFetch`.
+const defaultNetFetch = (async () => ({
+  ok: true, status: 200, headers: {},
+  json: async () => ({ success: true, data: { items: [] } }),
+  text: async () => '',
+})) as any;
+
+function makeSb(bus: any, opts: { email?: string; country?: string; netFetch?: typeof fetch } = {}) {
   return {
     version: '1', bus,
     steam: {
       getStoreCountry: async () => opts.country,
       getCurrentUser: () => ({ accountName: 'tester', email: async () => opts.email }),
     },
+    net: { fetch: opts.netFetch ?? defaultNetFetch },
   } as any;
 }
 const okFetch = (body: unknown, ok = true) => (async () => ({ ok, status: ok ? 200 : 500, json: async () => body })) as any;
@@ -51,13 +62,13 @@ describe('installKeysBridge', () => {
 
   test('keys.request → keys.response with parsed items', async () => {
     const bus = makeBus();
-    const payments = { success: true, data: [{ value: 'paypalych-sbp', can_pay_services: true, disabled: false }] };
     const keys = { success: true, data: { items: [
       { id: 7, name: 'X', is_active: true, region_label: 'Global', package: { id: 99, product_type: 'base' }, price: 10, old_price: null, discount_percent: 0 },
     ]}};
-    let call = 0;
-    const fetchImpl = (async () => ({ ok: true, status: 200, json: async () => (call++ === 0 ? payments : keys) })) as any;
-    installKeysBridge(makeSb(bus, { country: 'RU' }), { openPayment: async () => true, fetchImpl });
+    // Payments (resolveKeysPaymentId) is still fetchImpl-served; the keys-list
+    // GET (fetchKeys) now goes through sb.net.
+    const netFetch = (async () => ({ ok: true, status: 200, headers: {}, json: async () => keys, text: async () => '' })) as any;
+    installKeysBridge(makeSb(bus, { country: 'RU', netFetch }), { openPayment: async () => true, fetchImpl: paymentsFetch });
     bus.publish('booster-addfunds.keys.request', { reqId: 'r1', appid: 108710 });
     await new Promise((r) => setTimeout(r, 5));
     const resp = bus.published.find((p) => p.topic === 'booster-checkout.keys.response');
@@ -68,12 +79,10 @@ describe('installKeysBridge', () => {
 
   test('purchase with steam email → opens payment, ok result', async () => {
     const bus = makeBus();
-    const payments = { success: true, data: [{ value: 'p', can_pay_services: true, disabled: false }] };
     const order = { success: true, data: { redirectUrl: 'https://pay/x', uid: 'u' } };
-    let call = 0;
-    const fetchImpl = (async () => ({ ok: true, status: 200, json: async () => (call++ === 0 ? payments : order) })) as any;
+    const netFetch = (async () => ({ ok: true, status: 200, headers: {}, json: async () => order, text: async () => '' })) as any;
     let openedUrl = '';
-    installKeysBridge(makeSb(bus, { email: 'a@b.c' }), { openPayment: async (u) => { openedUrl = u; return true; }, fetchImpl });
+    installKeysBridge(makeSb(bus, { email: 'a@b.c', netFetch }), { openPayment: async (u) => { openedUrl = u; return true; }, fetchImpl: paymentsFetch });
     bus.publish('booster-addfunds.keys.purchase', { reqId: 'p1', itemId: 7 });
     await new Promise((r) => setTimeout(r, 5));
     expect(openedUrl).toBe('https://pay/x');
@@ -83,14 +92,10 @@ describe('installKeysBridge', () => {
 
   test('purchase sends steam login (accountName) alongside the email in the order body', async () => {
     const bus = makeBus();
-    const payments = { success: true, data: [{ value: 'p', can_pay_services: true, disabled: false }] };
     const order = { success: true, data: { redirectUrl: 'https://pay/x', uid: 'u' } };
     let postBody: any;
-    const fetchImpl = (async (_u: string, init?: { method?: string; body?: string }) => {
-      if ((init?.method ?? 'GET') === 'POST') { postBody = JSON.parse(init!.body as string); return { ok: true, status: 200, json: async () => order }; }
-      return { ok: true, status: 200, json: async () => payments };
-    }) as any;
-    installKeysBridge(makeSb(bus, { email: 'a@b.c' }), { openPayment: async () => true, fetchImpl });
+    const netFetch = (async (_u: string, init?: { body?: string }) => { postBody = JSON.parse(init!.body as string); return { ok: true, status: 200, headers: {}, json: async () => order, text: async () => '' }; }) as any;
+    installKeysBridge(makeSb(bus, { email: 'a@b.c', netFetch }), { openPayment: async () => true, fetchImpl: paymentsFetch });
     bus.publish('booster-addfunds.keys.purchase', { reqId: 'p1', itemId: 7 });
     await new Promise((r) => setTimeout(r, 5));
     expect(postBody).toMatchObject({ account: 'a@b.c', login: 'tester' });
@@ -101,16 +106,12 @@ describe('installKeysBridge', () => {
     // truthy, email-required is skipped) while getCurrentUser() is still null in the
     // ~100ms snapshot window / post-rollback. Purchase must NOT block — login: ''.
     const bus = makeBus();
-    const payments = { success: true, data: [{ value: 'p', can_pay_services: true, disabled: false }] };
     const order = { success: true, data: { redirectUrl: 'https://pay/x', uid: 'u' } };
     let postBody: any;
-    const fetchImpl = (async (_u: string, init?: { method?: string; body?: string }) => {
-      if ((init?.method ?? 'GET') === 'POST') { postBody = JSON.parse(init!.body as string); return { ok: true, status: 200, json: async () => order }; }
-      return { ok: true, status: 200, json: async () => payments };
-    }) as any;
-    const sb = { version: '1', bus, steam: { getStoreCountry: async () => undefined, getCurrentUser: () => null } } as any;
+    const netFetch = (async (_u: string, init?: { body?: string }) => { postBody = JSON.parse(init!.body as string); return { ok: true, status: 200, headers: {}, json: async () => order, text: async () => '' }; }) as any;
+    const sb = { version: '1', bus, steam: { getStoreCountry: async () => undefined, getCurrentUser: () => null }, net: { fetch: netFetch } } as any;
     let opened = false;
-    installKeysBridge(sb, { openPayment: async () => { opened = true; return true; }, fetchImpl });
+    installKeysBridge(sb, { openPayment: async () => { opened = true; return true; }, fetchImpl: paymentsFetch });
     bus.publish('booster-addfunds.keys.purchase', { reqId: 'p1', itemId: 7, email: 'typed@user.com' });
     await new Promise((r) => setTimeout(r, 5));
     expect(postBody).toMatchObject({ account: 'typed@user.com', login: '' });
@@ -119,16 +120,13 @@ describe('installKeysBridge', () => {
 
   test('successful order persists its uid via onOrderUid before opening payment', async () => {
     const bus = makeBus();
-    const payments = { success: true, data: [{ value: 'p', can_pay_services: true, disabled: false }] };
-    const order = { success: true, data: { redirectUrl: 'https://pay/x', uid: 'a5273b1e-87b4-435f-95ed-e85995b8951d' } };
-    let call = 0;
-    const fetchImpl = (async () => ({ ok: true, status: 200, json: async () => (call++ === 0 ? payments : order) })) as any;
+    const netFetch = orderNetFetch(['a5273b1e-87b4-435f-95ed-e85995b8951d']);
     const events: string[] = [];
     let persistedUid: string | undefined;
-    installKeysBridge(makeSb(bus, { email: 'a@b.c' }), {
+    installKeysBridge(makeSb(bus, { email: 'a@b.c', netFetch }), {
       openPayment: async () => { events.push('open'); return true; },
       onOrderUid: (uid) => { events.push('persist'); persistedUid = uid; },
-      fetchImpl,
+      fetchImpl: paymentsFetch,
     });
     bus.publish('booster-addfunds.keys.purchase', { reqId: 'p1', itemId: 7 });
     await new Promise((r) => setTimeout(r, 5));
@@ -138,15 +136,13 @@ describe('installKeysBridge', () => {
 
   test('failed order does not persist a uid', async () => {
     const bus = makeBus();
-    const payments = { success: true, data: [{ value: 'p', can_pay_services: true, disabled: false }] };
     const order = { success: false, message: 'Платёжный метод недоступен' };
-    let call = 0;
-    const fetchImpl = (async () => ({ ok: true, status: 200, json: async () => (call++ === 0 ? payments : order) })) as any;
+    const netFetch = (async () => ({ ok: true, status: 200, headers: {}, json: async () => order, text: async () => '' })) as any;
     let persisted = false;
-    installKeysBridge(makeSb(bus, { email: 'a@b.c' }), {
+    installKeysBridge(makeSb(bus, { email: 'a@b.c', netFetch }), {
       openPayment: async () => true,
       onOrderUid: () => { persisted = true; },
-      fetchImpl,
+      fetchImpl: paymentsFetch,
     });
     bus.publish('booster-addfunds.keys.purchase', { reqId: 'p1', itemId: 7 });
     await new Promise((r) => setTimeout(r, 5));
@@ -158,10 +154,10 @@ describe('installKeysBridge', () => {
     // onOrderUid wired to the SAME validator/cap the production sink uses, so this
     // exercises the real isValidUid gate end-to-end through the keys path.
     let store: string[] = [];
-    installKeysBridge(makeSb(bus, { email: 'a@b.c' }), {
+    installKeysBridge(makeSb(bus, { email: 'a@b.c', netFetch: orderNetFetch(["'; DROP TABLE orders;--"]) }), {
       openPayment: async () => true,
       onOrderUid: (uid) => { store = appendOrderUid(store, uid); },
-      fetchImpl: purchaseFetch(["'; DROP TABLE orders;--"]),
+      fetchImpl: paymentsFetch,
     });
     bus.publish('booster-addfunds.keys.purchase', { reqId: 'p1', itemId: 7 });
     await new Promise((r) => setTimeout(r, 5));
@@ -173,10 +169,10 @@ describe('installKeysBridge', () => {
     const u1 = 'a5273b1e-87b4-435f-95ed-e85995b8951d';
     const u2 = 'b1112233-4455-6677-8899-aabbccddeeff';
     let store: string[] = [];
-    installKeysBridge(makeSb(bus, { email: 'a@b.c' }), {
+    installKeysBridge(makeSb(bus, { email: 'a@b.c', netFetch: orderNetFetch([u1, u2]) }), {
       openPayment: async () => true,
       onOrderUid: (uid) => { store = appendOrderUid(store, uid); },
-      fetchImpl: purchaseFetch([u1, u2]),
+      fetchImpl: paymentsFetch,
     });
     bus.publish('booster-addfunds.keys.purchase', { reqId: 'p1', itemId: 7 });
     await new Promise((r) => setTimeout(r, 5));
@@ -187,11 +183,9 @@ describe('installKeysBridge', () => {
 
   test('order failure forwards the server human message in purchase-result', async () => {
     const bus = makeBus();
-    const payments = { success: true, data: [{ value: 'p', can_pay_services: true, disabled: false }] };
     const order = { success: false, message: 'Платёжный метод недоступен' };
-    let call = 0;
-    const fetchImpl = (async () => ({ ok: true, status: 200, json: async () => (call++ === 0 ? payments : order) })) as any;
-    installKeysBridge(makeSb(bus, { email: 'a@b.c' }), { openPayment: async () => true, fetchImpl });
+    const netFetch = (async () => ({ ok: true, status: 200, headers: {}, json: async () => order, text: async () => '' })) as any;
+    installKeysBridge(makeSb(bus, { email: 'a@b.c', netFetch }), { openPayment: async () => true, fetchImpl: paymentsFetch });
     bus.publish('booster-addfunds.keys.purchase', { reqId: 'p1', itemId: 7 });
     await new Promise((r) => setTimeout(r, 5));
     const res = bus.published.find((p) => p.topic === 'booster-checkout.keys.purchase-result');
@@ -201,12 +195,10 @@ describe('installKeysBridge', () => {
 
   test('purchase forwards sanitized window titles to openPayment', async () => {
     const bus = makeBus();
-    const payments = { success: true, data: [{ value: 'p', can_pay_services: true, disabled: false }] };
     const order = { success: true, data: { redirectUrl: 'https://pay/x', uid: 'u' } };
-    let call = 0;
-    const fetchImpl = (async () => ({ ok: true, status: 200, json: async () => (call++ === 0 ? payments : order) })) as any;
+    const netFetch = (async () => ({ ok: true, status: 200, headers: {}, json: async () => order, text: async () => '' })) as any;
     let gotTitles: any;
-    installKeysBridge(makeSb(bus, { email: 'a@b.c' }), { openPayment: async (_u, t) => { gotTitles = t; return true; }, fetchImpl });
+    installKeysBridge(makeSb(bus, { email: 'a@b.c', netFetch }), { openPayment: async (_u, t) => { gotTitles = t; return true; }, fetchImpl: paymentsFetch });
     bus.publish('booster-addfunds.keys.purchase', { reqId: 'p1', itemId: 7, windowTitle: 'Покупка ключа — «Game X»', windowTaskbarTitle: 'Покупка ключа' });
     await new Promise((r) => setTimeout(r, 5));
     expect(gotTitles).toEqual({ title: 'Покупка ключа — «Game X»', taskbarTitle: 'Покупка ключа' });
@@ -214,12 +206,10 @@ describe('installKeysBridge', () => {
 
   test('purchase drops forged out-of-range / non-string titles to undefined', async () => {
     const bus = makeBus();
-    const payments = { success: true, data: [{ value: 'p', can_pay_services: true, disabled: false }] };
     const order = { success: true, data: { redirectUrl: 'https://pay/x', uid: 'u' } };
-    let call = 0;
-    const fetchImpl = (async () => ({ ok: true, status: 200, json: async () => (call++ === 0 ? payments : order) })) as any;
+    const netFetch = (async () => ({ ok: true, status: 200, headers: {}, json: async () => order, text: async () => '' })) as any;
     let gotTitles: any;
-    installKeysBridge(makeSb(bus, { email: 'a@b.c' }), { openPayment: async (_u, t) => { gotTitles = t; return true; }, fetchImpl });
+    installKeysBridge(makeSb(bus, { email: 'a@b.c', netFetch }), { openPayment: async (_u, t) => { gotTitles = t; return true; }, fetchImpl: paymentsFetch });
     bus.publish('booster-addfunds.keys.purchase', { reqId: 'p1', itemId: 7, windowTitle: 'x'.repeat(201), windowTaskbarTitle: 42 });
     await new Promise((r) => setTimeout(r, 5));
     expect(gotTitles).toBeDefined();
@@ -233,5 +223,44 @@ describe('installKeysBridge', () => {
     bus.publish('booster-addfunds.keys.purchase', { reqId: 'p2', itemId: 7 });
     await new Promise((r) => setTimeout(r, 5));
     expect(bus.published.some((p) => p.topic === 'booster-checkout.keys.email-required' && (p.data as any).reqId === 'p2')).toBe(true);
+  });
+
+  test('publishes keys.config with resolved paymentId + storeCountry at init', async () => {
+    const bus = makeBus();
+    installKeysBridge(makeSb(bus, { country: 'RU' }), { openPayment: async () => true, fetchImpl: paymentsFetch });
+    await new Promise((r) => setTimeout(r, 5));
+    const cfg = bus.published.find((p) => p.topic === 'booster-checkout.keys.config');
+    expect(cfg).toBeTruthy();
+    expect(cfg!.data).toEqual({ paymentId: 'p', storeCountry: 'RU' });
+  });
+
+  test('publishes keys.config with paymentId:null when no usable payment method is available', async () => {
+    const bus = makeBus();
+    const noPayments = okFetch({ success: true, data: [] });
+    installKeysBridge(makeSb(bus, { country: 'KZ' }), { openPayment: async () => true, fetchImpl: noPayments });
+    await new Promise((r) => setTimeout(r, 5));
+    const cfg = bus.published.find((p) => p.topic === 'booster-checkout.keys.config');
+    expect(cfg).toBeTruthy();
+    expect(cfg!.data).toEqual({ paymentId: null, storeCountry: 'KZ' });
+  });
+
+  test('publishes keys.config with storeCountry:null when getStoreCountry yields nothing', async () => {
+    const bus = makeBus();
+    installKeysBridge(makeSb(bus), { openPayment: async () => true, fetchImpl: paymentsFetch });
+    await new Promise((r) => setTimeout(r, 5));
+    const cfg = bus.published.find((p) => p.topic === 'booster-checkout.keys.config');
+    expect(cfg!.data).toEqual({ paymentId: 'p', storeCountry: null });
+  });
+
+  test('re-publishes keys.config on booster-addfunds.keys.config.request', async () => {
+    const bus = makeBus();
+    installKeysBridge(makeSb(bus, { country: 'RU' }), { openPayment: async () => true, fetchImpl: paymentsFetch });
+    await new Promise((r) => setTimeout(r, 5));
+    const before = bus.published.filter((p) => p.topic === 'booster-checkout.keys.config').length;
+    bus.publish('booster-addfunds.keys.config.request', null);
+    await new Promise((r) => setTimeout(r, 5));
+    const after = bus.published.filter((p) => p.topic === 'booster-checkout.keys.config');
+    expect(after.length).toBe(before + 1);
+    expect(after.at(-1)!.data).toEqual({ paymentId: 'p', storeCountry: 'RU' });
   });
 });

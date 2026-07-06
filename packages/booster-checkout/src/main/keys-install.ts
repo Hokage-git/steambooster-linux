@@ -52,7 +52,7 @@ export function installKeysBridge(sb: SbApi, deps: KeysBridgeDeps): () => void {
       try { storeCountry = await sb.steam.getStoreCountry(); } catch { storeCountry = undefined; }
       const paymentId = await resolveKeysPaymentId(sb, fetchImpl);
       if (!paymentId) { sb.bus.publish('booster-checkout.keys.response', { reqId, appid, items: [], error: 'no-payment' }); return; }
-      const items = await fetchKeys(sb, { appid, paymentId, storeCountry }, fetchImpl);
+      const items = await fetchKeys(sb, { appid, paymentId, storeCountry });
       sb.bus.publish('booster-checkout.keys.response', { reqId, appid, items });
     })();
   }));
@@ -77,7 +77,7 @@ export function installKeysBridge(sb: SbApi, deps: KeysBridgeDeps): () => void {
       // Steam login (accountName) — always sent alongside the email `account`;
       // empty string on the rare null-user window (never blocks the purchase).
       const login = user?.accountName ?? '';
-      const res = await postKeysOrder(sb, { paymentId, itemId, account, login }, fetchImpl);
+      const res = await postKeysOrder(sb, { paymentId, itemId, account, login });
       if (!res.ok || !res.redirectUrl) { sb.bus.publish('booster-checkout.keys.purchase-result', { reqId, ok: false, error: res.error, message: res.message }); return; }
       if (res.uid) deps.onOrderUid?.(res.uid);
       const opened = await deps.openPayment(res.redirectUrl, titles);
@@ -85,9 +85,25 @@ export function installKeysBridge(sb: SbApi, deps: KeysBridgeDeps): () => void {
     })();
   }));
 
+  // ── booster-checkout.keys.config broadcaster ─────────────────────────────
+  // checkout stays the sole owner of paymentId + storeCountry resolution;
+  // addfunds can't re-derive these (payment-method resolution is not
+  // duplicated). Push the resolved pair so addfunds can fetch the keys list
+  // directly via sb.net, skipping the booster-addfunds.keys.request round-trip.
+  // paymentId may be null (no usable payment method) — addfunds falls back
+  // to the bus path (keys.request/keys.response) in that case.
+  async function publishKeysConfig(): Promise<void> {
+    let storeCountry: string | undefined;
+    try { storeCountry = await sb.steam.getStoreCountry(); } catch { storeCountry = undefined; }
+    const paymentId = await resolveKeysPaymentId(sb, fetchImpl);
+    sb.bus.publish('booster-checkout.keys.config', { paymentId: paymentId ?? null, storeCountry: storeCountry ?? null });
+  }
+  subs.push(sb.bus.subscribe('booster-addfunds.keys.config.request', () => { void publishKeysConfig(); }));
+
   // Cold-boot handshake: announce we're ready so an addfunds page already
   // mounted at injection re-sends its pending keys.request.
   sb.bus.publish('booster-checkout.keys.ready', {});
+  void publishKeysConfig();
 
   return () => { for (const u of subs) u(); };
 }

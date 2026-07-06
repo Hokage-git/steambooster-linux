@@ -15,6 +15,7 @@ import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
 import { Window } from 'happy-dom';
 import { registerAppPage } from '../src/pages/app';
 import type { KeyItem } from '../src/lib/keys-api';
+import { CACHE_KEY, TTL_MS, type FetchResult } from '../src/lib/catalogue-api';
 
 function installDom(): Window {
   const w = new Window({ url: 'https://store.steampowered.com/app/570/' });
@@ -38,7 +39,13 @@ function installDom(): Window {
 }
 
 function setBody(html: string): void {
-  document.body.innerHTML = html;
+  // Real /app/ pages carry the right META column `.rightcol.game_meta_data`
+  // (the one mountRegionGames targets — a bare `.rightcol` matches the wrong
+  // top glance column live). Seeded unconditionally, WITH a child, so the
+  // `.rightcol.game_meta_data`-with-children lookup resolves synchronously in
+  // every test (avoids the fixed 5s timeout — see M2). Region-locked bodies
+  // never reach the mountRegionGames call, so the extra div there is inert.
+  document.body.innerHTML = html + '<div class="rightcol game_meta_data"><div class="block"></div></div>';
 }
 
 const tick = (): Promise<void> => new Promise((r) => setTimeout(r, 5));
@@ -487,5 +494,145 @@ describe('registerAppPage', () => {
     expect(document.querySelector('.booster-eo')).toBeNull();
     expect(document.getElementById('booster-topup-bar')).toBeNull();
     expect(teardown).toBeUndefined();
+  });
+
+  describe('region-games carousel', () => {
+    test('.rightcol present + fresh cache → inserts #booster-region-games as the first child of .rightcol', async () => {
+      const { sb, pageReg } = makeSbStub();
+      registerAppPage(sb, { keysClient: makeKeysClient({ items: [] }) });
+      setBody(editionBody);
+      const now = Date.now();
+      window.localStorage.setItem(CACHE_KEY, JSON.stringify({
+        items: [{ link: 'https://steambalance.cc/x', cover: 'https://cdn/x.jpg' }],
+        fetchedAt: now,
+        attemptedAt: now,
+      }));
+      await reg(pageReg).mount(mountCtx());
+      await tick();
+      const rightcol = document.querySelector('.rightcol')!;
+      const block = document.getElementById('booster-region-games');
+      expect(block).not.toBeNull();
+      expect(rightcol.firstElementChild).toBe(block);
+    });
+
+    // mountRegionGames wraps its whole body in try{...}catch{return;} (see app.ts),
+    // so it structurally cannot reject — this holds regardless of whether the page
+    // mount combines it with Promise.all or Promise.allSettled. What this test
+    // actually proves: a broken fetchCatalogue doesn't break the page mount or
+    // strand mountNormal's own teardown.
+    test('throwing fetchCatalogue + no cache → page mount resolves (never rejects), no block, sibling topup bar still mounts+tears down', async () => {
+      const { sb, pageReg } = makeSbStub();
+      registerAppPage(sb, {
+        keysClient: makeKeysClient({ items: [] }),
+        fetchCatalogue: async () => { throw new Error('boom'); },
+      });
+      setBody(editionBody);
+      const ctrl = new AbortController();
+      let rejected = false;
+      const teardown = await reg(pageReg)
+        .mount(mountCtx('https://store.steampowered.com/app/570/', ctrl.signal))
+        .catch((): undefined => { rejected = true; return undefined; });
+      expect(rejected).toBe(false);
+      await tick();
+      expect(document.getElementById('booster-region-games')).toBeNull();
+      expect(document.getElementById('booster-topup-bar')).not.toBeNull();
+      expect(typeof teardown).toBe('function');
+      (teardown as () => void)();
+      expect(document.getElementById('booster-topup-bar')).toBeNull();
+    });
+
+    describe('mountRegionGames DOM wiring', () => {
+      test('cold ok (no cache) → inserts #booster-region-games as first child of .rightcol, cache written', async () => {
+        const { sb, pageReg } = makeSbStub();
+        const NOW = 1_700_000_000_000;
+        registerAppPage(sb, {
+          keysClient: makeKeysClient({ items: [] }),
+          now: () => NOW,
+          fetchCatalogue: async () => ({ status: 'ok', items: [{ link: 'https://steambalance.cc/a', cover: 'https://cdn/a.jpg' }] }),
+        });
+        setBody(editionBody);
+        expect(window.localStorage.getItem(CACHE_KEY)).toBeNull();
+        await reg(pageReg).mount(mountCtx());
+        await tick();
+        const rightcol = document.querySelector('.rightcol')!;
+        const block = document.getElementById('booster-region-games');
+        expect(block).not.toBeNull();
+        expect(rightcol.firstElementChild).toBe(block);
+        const cached = JSON.parse(window.localStorage.getItem(CACHE_KEY)!);
+        expect(cached).toEqual({ items: [{ link: 'https://steambalance.cc/a', cover: 'https://cdn/a.jpg' }], fetchedAt: NOW, attemptedAt: NOW });
+      });
+
+      test('empty result with a stale-cache block already shown → block is removed, cache written as empty-marker', async () => {
+        const { sb, pageReg } = makeSbStub();
+        const NOW = 1_700_000_000_000;
+        const STALE = NOW - TTL_MS - 1000;
+        window.localStorage.setItem(CACHE_KEY, JSON.stringify({
+          items: [{ link: 'https://steambalance.cc/x', cover: 'https://cdn/x.jpg' }],
+          fetchedAt: STALE,
+          attemptedAt: STALE,
+        }));
+        let resolveFetch!: (r: FetchResult) => void;
+        registerAppPage(sb, {
+          keysClient: makeKeysClient({ items: [] }),
+          now: () => NOW,
+          fetchCatalogue: () => new Promise<FetchResult>((resolve) => { resolveFetch = resolve; }),
+        });
+        setBody(editionBody);
+        const mountPromise = reg(pageReg).mount(mountCtx());
+        await tick(); // let the synchronous stale-cache render (insert) run before the fetch settles
+        // Confirm the stale-cache block is actually shown first — the "hide" behaviour
+        // below only means something if it was on-screen beforehand.
+        expect(document.getElementById('booster-region-games')).not.toBeNull();
+        resolveFetch({ status: 'empty' });
+        await mountPromise;
+        await tick();
+        expect(document.getElementById('booster-region-games')).toBeNull();
+        const cached = JSON.parse(window.localStorage.getItem(CACHE_KEY)!);
+        expect(cached).toEqual({ items: [], fetchedAt: NOW, attemptedAt: NOW });
+      });
+
+      test('stale ok revalidate → already-shown block is NOT rebuilt (same node identity), cache refreshed', async () => {
+        const { sb, pageReg } = makeSbStub();
+        const NOW = 1_700_000_000_000;
+        const STALE = NOW - TTL_MS - 1000;
+        window.localStorage.setItem(CACHE_KEY, JSON.stringify({
+          items: [{ link: 'https://steambalance.cc/x', cover: 'https://cdn/x.jpg' }],
+          fetchedAt: STALE,
+          attemptedAt: STALE,
+        }));
+        let resolveFetch!: (r: FetchResult) => void;
+        registerAppPage(sb, {
+          keysClient: makeKeysClient({ items: [] }),
+          now: () => NOW,
+          fetchCatalogue: () => new Promise<FetchResult>((resolve) => { resolveFetch = resolve; }),
+        });
+        setBody(editionBody);
+        const mountPromise = reg(pageReg).mount(mountCtx());
+        await tick(); // let the synchronous stale-cache render (insert) run before the fetch settles
+        const blockBefore = document.getElementById('booster-region-games');
+        expect(blockBefore).not.toBeNull();
+        resolveFetch({ status: 'ok', items: [{ link: 'https://steambalance.cc/y', cover: 'https://cdn/y.jpg' }] });
+        await mountPromise;
+        await tick();
+        const blockAfter = document.getElementById('booster-region-games');
+        expect(blockAfter).toBe(blockBefore); // same node — no rebuild, no animation reset
+        const cached = JSON.parse(window.localStorage.getItem(CACHE_KEY)!);
+        expect(cached).toEqual({ items: [{ link: 'https://steambalance.cc/y', cover: 'https://cdn/y.jpg' }], fetchedAt: NOW, attemptedAt: NOW });
+      });
+    });
+
+    test('region-locked page never invokes mountRegionGames (no fetch, no block)', async () => {
+      const { sb, pageReg } = makeSbStub();
+      let called = false;
+      registerAppPage(sb, {
+        keysClient: makeKeysClient({ items: [item({ packageId: 22350 })] }),
+        fetchCatalogue: async () => { called = true; return { status: 'ok', items: [] }; },
+      });
+      setBody(`<div class="redeemwalletcode_marker"></div><div id="error_box"><span class="error">Данный товар недоступен в вашем регионе</span></div>`);
+      await reg(pageReg).mount(mountCtx('https://store.steampowered.com/app/22350/'));
+      await tick();
+      expect(document.getElementById('booster-region-games')).toBeNull();
+      expect(called).toBe(false);
+    });
   });
 });

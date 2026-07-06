@@ -1,5 +1,7 @@
 import type { SbApi } from '@steambalance/booster-framework/api-types';
 import type { KeyItem } from './keys-api';
+import type { KeysConfigService } from './keys-config';
+import { fetchKeysDirect as realFetchKeysDirect } from './keys-fetch';
 
 let nonceCounter = 0;
 function makeNonce(): string {
@@ -7,7 +9,15 @@ function makeNonce(): string {
   return `${Date.now().toString(36)}-${(nonceCounter++).toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`;
 }
 
-export function createKeysClient(sb: SbApi, opts: { timeoutMs?: number; retryMs?: number; purchaseTimeoutMs?: number } = {}) {
+export function createKeysClient(sb: SbApi, opts: {
+  timeoutMs?: number; retryMs?: number; purchaseTimeoutMs?: number;
+  /** Cached checkout paymentId/storeCountry broadcast — see keys-config.ts.
+   *  Omitted (default) → requestKeys always uses the bus, unchanged behavior. */
+  keysConfig?: KeysConfigService;
+  /** Direct sb.net fetch seam — default: the real fetchKeysDirect. Tests
+   *  override to simulate a throw and exercise the bus-fallback branch. */
+  fetchKeysDirect?: typeof realFetchKeysDirect;
+} = {}) {
   const timeoutMs = opts.timeoutMs ?? 6000;
   const retryMs = opts.retryMs ?? 1000;
   // Покупка ключа требует более длительного таймаута: сервер могёт медленнее отвечать на POST,
@@ -42,7 +52,34 @@ export function createKeysClient(sb: SbApi, opts: { timeoutMs?: number; retryMs?
   }));
   subs.push(sb.bus.subscribe('booster-checkout.keys.ready', () => { for (const cb of onReady.splice(0)) cb(); }));
 
+  const fetchDirect = opts.fetchKeysDirect ?? realFetchKeysDirect;
+
+  // Preferred path: checkout has broadcast a usable paymentId (keys-config.ts),
+  // so fetch the list directly via sb.net — no bus round-trip, no per-page
+  // wait on checkout's main-shell. An empty result is a legit "no keys for
+  // this region" answer and is returned as-is (NOT treated as a failure).
+  // Falls back to the bus (requestKeysViaBus) when no paymentId is cached yet
+  // (cold start / no usable payment method) or if the direct fetch itself
+  // throws — fetchKeysDirect is designed to never throw, so this catch is
+  // belt-and-suspenders, not a normally-taken path.
   function requestKeys(appid: number, signal: AbortSignal): Promise<KeyItem[]> {
+    const cfg = opts.keysConfig?.get();
+    if (cfg && cfg.paymentId) {
+      // NOTE: sb.net doesn't wire AbortSignal in v1 (NetFetchInit.signal is a
+      // no-op), so unlike the bus path this doesn't resolve early on abort —
+      // it's bounded by the native fetch's own timeout. Callers (pages/app.ts)
+      // re-check ctx.signal.aborted after the await, so a stale result is dropped.
+      // storeCountry comes from the broadcast snapshot (may be a session-stale
+      // value if the account's store country changed mid-session without a
+      // re-broadcast) — acceptable: store country is account-bound/effectively
+      // stable per session, and the actual charge is keyed by itemId, not region.
+      return fetchDirect(sb, { appid, paymentId: cfg.paymentId, storeCountry: cfg.storeCountry }, signal)
+        .catch(() => requestKeysViaBus(appid, signal));
+    }
+    return requestKeysViaBus(appid, signal);
+  }
+
+  function requestKeysViaBus(appid: number, signal: AbortSignal): Promise<KeyItem[]> {
     const reqId = nextId();
     activeListReqId = reqId;
     return new Promise<KeyItem[]>((resolve) => {

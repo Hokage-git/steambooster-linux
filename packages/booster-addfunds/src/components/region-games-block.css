@@ -1,0 +1,65 @@
+#booster-region-games {
+  background: #131a22;
+  border-radius: 4px;
+  padding: 24px;
+  overflow: hidden;
+  box-sizing: border-box;
+  width: 100%;
+  margin: 0 0 8px 0;
+  cursor: pointer;
+}
+#booster-region-games .rg-header {
+  display: flex; align-items: center; justify-content: space-between;
+}
+#booster-region-games .rg-title {
+  color: #fff; font: 700 18px/1.5 'Nunito Sans', 'Motiva Sans', Arial, sans-serif;
+}
+#booster-region-games .rg-logo {
+  display: inline-flex; align-items: center; flex: none;
+}
+#booster-region-games .rg-viewport {
+  /* 150px (vs the 134px card) gives the hover-scale vertical room so the
+     enlarged card isn't clipped by overflow; cards are centered in the extra
+     space. overflow:hidden still clips the horizontal marquee. */
+  height: 150px; overflow: hidden; position: relative; margin-top: 16px;
+  display: flex; align-items: center;
+}
+#booster-region-games .rg-track {
+  display: flex; align-items: center; gap: 8px; will-change: transform;
+  animation-name: rg-scroll; animation-timing-function: linear; animation-iteration-count: infinite;
+}
+@keyframes rg-scroll {
+  from { transform: translateX(0); }
+  to   { transform: translateX(calc(-1 * var(--rg-shift))); }
+}
+#booster-region-games:hover .rg-track { animation-play-state: paused; }
+#booster-region-games .rg-card {
+  flex: 0 0 89px; width: 89px; height: 134px; border-radius: 4px; overflow: hidden;
+  position: relative; transform-origin: center center; will-change: transform;
+  /* PlayStation-menu style: grow in place on hover. The carousel is already
+     paused on hover, so the card stays put while it scales. */
+  transition: transform 0.24s cubic-bezier(0.2, 0.7, 0.2, 1), box-shadow 0.24s ease;
+}
+#booster-region-games .rg-card:hover {
+  transform: scale(1.09);
+  z-index: 2;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.55);
+}
+#booster-region-games .rg-card img {
+  width: 100%; height: 100%; object-fit: cover; display: block;
+}
+#booster-region-games .rg-fade-l,
+#booster-region-games .rg-fade-r {
+  position: absolute; top: 0; bottom: 0; width: 48px; pointer-events: none;
+}
+#booster-region-games .rg-fade-l {
+  left: 0; background: linear-gradient(90deg, #131a22, transparent);
+}
+#booster-region-games .rg-fade-r {
+  right: 0; background: linear-gradient(270deg, #131a22, transparent);
+}
+@media (prefers-reduced-motion: reduce) {
+  #booster-region-games .rg-track { animation: none; }
+  #booster-region-games .rg-card { transition: none; }
+  #booster-region-games .rg-viewport { overflow-x: auto; }
+}

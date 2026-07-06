@@ -25,6 +25,8 @@ const ru = {
     keys_purchase_window_taskbar_title: 'Покупка ключа',
     keys_purchase_window_title: 'Покупка ключа — «{gameName:string}»',
     keys_row_label: 'Купить {gameName:string}',
+    region_games_aria_label: 'Игры недоступные в регионе',
+    region_games_title: 'Игры недоступные в регионе',
     row_aria_label: 'Пополнить баланс через SteamBalance',
     row_label: 'Пополнение баланса',
     submit_button: 'Пополнить',

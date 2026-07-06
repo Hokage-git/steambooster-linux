@@ -24,6 +24,7 @@ sb.plugins.register({
     Capability.Configs,
     Capability.Bus,
     Capability.Pages,
+    Capability.Net,
   ],
   async init(ctx: PluginContext): Promise<() => void> {
     // Main = desktop client shell -> inject the catalog item into the store

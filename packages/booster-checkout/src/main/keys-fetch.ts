@@ -1,5 +1,4 @@
 import type { SbApi } from '@steambalance/booster-framework/api-types';
-import { getBoosterHeaders } from './headers';
 import { URLS } from '../urls';
 
 export interface KeyItem {
@@ -35,12 +34,11 @@ function toKeyItem(raw: unknown): KeyItem | null {
 export async function fetchKeys(
   sb: SbApi,
   args: { appid: number; paymentId: string; storeCountry?: string },
-  fetchImpl: typeof fetch = fetch,
 ): Promise<KeyItem[]> {
   try {
     const q = new URLSearchParams({ paymentId: args.paymentId, appid: String(args.appid) });
     if (args.storeCountry) q.set('store_country', args.storeCountry);
-    const r = await fetchImpl(`${URLS.steamKeysApi}?${q.toString()}`, { method: 'GET', headers: getBoosterHeaders(sb) });
+    const r = await sb.net.fetch(`${URLS.steamKeysApi}?${q.toString()}`, { method: 'GET' });
     if (!r.ok) return [];
     const body = await r.json() as unknown;
     const items = (body as { data?: { items?: unknown } })?.data?.items;
