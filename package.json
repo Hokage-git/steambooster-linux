@@ -9,7 +9,7 @@
   "scripts": {
     "gen-strings": "bun run scripts/gen-strings.ts",
     "build": "bun run --filter '*' build",
-    "test": "bun test --cwd packages/booster-checkout && bun test --cwd packages/booster-addfunds"
+    "test": "bun test --cwd packages/booster-checkout && bun test --cwd packages/booster-addfunds && bun test --cwd packages/booster-rateaccount"
   },
   "engines": {
     "bun": ">=1.3.0"

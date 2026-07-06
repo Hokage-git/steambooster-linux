@@ -4,12 +4,14 @@
  *
  * This is the per-repo version that runs after the F.3 repo lift. It reads
  * per-package JSON sources:
- *   - packages/booster-checkout/strings/ru.json    (checkout + general)
- *   - packages/booster-addfunds/strings/ru.json    (addfunds + general)
+ *   - packages/booster-checkout/strings/ru.json      (checkout + general)
+ *   - packages/booster-addfunds/strings/ru.json      (addfunds + general)
+ *   - packages/booster-rateaccount/strings/ru.json   (rateaccount + general)
  *
  * Emits per-package generated files:
  *   - packages/booster-checkout/src/generated/messages.ts
  *   - packages/booster-addfunds/src/generated/messages.ts
+ *   - packages/booster-rateaccount/src/generated/messages.ts
  *
  * Post-F.3 lift, the `general.*` subtree is sourced exclusively from each
  * package's own strings/ru.json — there's no root strings.json in this repo.
@@ -46,13 +48,15 @@ function findRepoRoot(): string {
 const REPO_ROOT = findRepoRoot();
 const CHECKOUT_JSON = join(REPO_ROOT, 'packages', 'booster-checkout', 'strings', 'ru.json');
 const ADDFUNDS_JSON = join(REPO_ROOT, 'packages', 'booster-addfunds', 'strings', 'ru.json');
+const RATEACCOUNT_JSON = join(REPO_ROOT, 'packages', 'booster-rateaccount', 'strings', 'ru.json');
 
 const CHECKOUT_ALLOWED = new Set(['checkout', 'general']);
 const ADDFUNDS_ALLOWED = new Set(['addfunds', 'general']);
+const RATEACCOUNT_ALLOWED = new Set(['rateaccount', 'general']);
 const ALLOWED_TYPES = new Set(['string', 'number']);
 
 type StringsDict = Record<string, unknown>;
-type PluginNamespace = 'checkout' | 'addfunds';
+type PluginNamespace = 'checkout' | 'addfunds' | 'rateaccount';
 
 function fail(code: number, msg: string): never {
   process.stderr.write(msg.endsWith('\n') ? msg : msg + '\n');
@@ -81,27 +85,28 @@ function canonicalize(node: unknown): string {
 }
 
 /** Verify per-package `general` subtrees are byte-for-byte identical across
- *  the two packages in this monorepo. Drift between booster-checkout/general and
- *  booster-addfunds/general would silently desync `LL.general.*` across plugins.
- *  This guard surfaces any divergence at gen-strings time with a precise diff. */
+ *  every package in this monorepo. Drift between any two packages' general
+ *  blocks would silently desync `LL.general.*` across plugins. This guard
+ *  surfaces any divergence at gen-strings time with a precise diff. The first
+ *  entry is the reference; every other entry must match it exactly. */
 function assertGeneralBlocksConsistent(
-  ckGeneral: StringsDict,
-  afGeneral: StringsDict,
+  blocks: ReadonlyArray<{ label: string; general: StringsDict }>,
 ): void {
-  const refLabel = 'packages/booster-checkout/strings/ru.json';
-  const ref = canonicalize(ckGeneral);
-  const afEncoded = canonicalize(afGeneral);
-  if (afEncoded === ref) return;
-
-  const lines: string[] = [
-    `general.* drift detected — per-package general subtrees disagree:`,
-    `  ${refLabel} general: ${ref}`,
-    `  packages/booster-addfunds/strings/ru.json general: ${afEncoded}`,
-    `Both per-package strings/ru.json files must carry an identical 'general' ` +
-    `block. Edit each file so the 'general' subtrees match exactly, then re-run ` +
-    `gen-strings.`,
-  ];
-  fail(1, lines.join('\n'));
+  if (blocks.length === 0) return;
+  const ref = canonicalize(blocks[0].general);
+  for (const { label, general } of blocks.slice(1)) {
+    const encoded = canonicalize(general);
+    if (encoded === ref) continue;
+    const lines: string[] = [
+      `general.* drift detected — per-package general subtrees disagree:`,
+      `  ${blocks[0].label} general: ${ref}`,
+      `  ${label} general: ${encoded}`,
+      `All per-package strings/ru.json files must carry an identical 'general' ` +
+      `block. Edit each file so the 'general' subtrees match exactly, then re-run ` +
+      `gen-strings.`,
+    ];
+    fail(1, lines.join('\n'));
+  }
 }
 
 function validate(root: StringsDict, allowed: Set<string>, label: string): void {
@@ -232,14 +237,17 @@ function writeFileEnsuringDir(path: string, content: string): void {
 
 const ckDict = readJsonAt(CHECKOUT_JSON, 'packages/booster-checkout/strings/ru.json');
 const afDict = readJsonAt(ADDFUNDS_JSON, 'packages/booster-addfunds/strings/ru.json');
+const raDict = readJsonAt(RATEACCOUNT_JSON, 'packages/booster-rateaccount/strings/ru.json');
 
 validate(ckDict, CHECKOUT_ALLOWED, 'packages/booster-checkout/strings/ru.json');
 validate(afDict, ADDFUNDS_ALLOWED, 'packages/booster-addfunds/strings/ru.json');
+validate(raDict, RATEACCOUNT_ALLOWED, 'packages/booster-rateaccount/strings/ru.json');
 
-assertGeneralBlocksConsistent(
-  (ckDict.general ?? {}) as StringsDict,
-  (afDict.general ?? {}) as StringsDict,
-);
+assertGeneralBlocksConsistent([
+  { label: 'packages/booster-checkout/strings/ru.json', general: (ckDict.general ?? {}) as StringsDict },
+  { label: 'packages/booster-addfunds/strings/ru.json', general: (afDict.general ?? {}) as StringsDict },
+  { label: 'packages/booster-rateaccount/strings/ru.json', general: (raDict.general ?? {}) as StringsDict },
+]);
 
 try {
   writeFileEnsuringDir(
@@ -248,6 +256,9 @@ try {
   writeFileEnsuringDir(
     join(REPO_ROOT, 'packages', 'booster-addfunds', 'src', 'generated', 'messages.ts'),
     emitTsDictForPackage(afDict, 'addfunds'));
+  writeFileEnsuringDir(
+    join(REPO_ROOT, 'packages', 'booster-rateaccount', 'src', 'generated', 'messages.ts'),
+    emitTsDictForPackage(raDict, 'rateaccount'));
 } catch (e) {
   fail(2, `gen-strings: filesystem write failed: ${e}`);
 }
@@ -262,4 +273,5 @@ function countTsKeys(pkg: StringsDict, primarySub: PluginNamespace): number {
 
 const ckCount = countTsKeys(ckDict, 'checkout');
 const afCount = countTsKeys(afDict, 'addfunds');
-process.stdout.write(`gen-strings: wrote checkout=${ckCount} addfunds=${afCount} TS keys\n`);
+const raCount = countTsKeys(raDict, 'rateaccount');
+process.stdout.write(`gen-strings: wrote checkout=${ckCount} addfunds=${afCount} rateaccount=${raCount} TS keys\n`);
