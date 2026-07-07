@@ -456,16 +456,18 @@
   .promo-btn:hover { background: var(--booster-brand-green-hover); }
   .promo-btn:active { background: var(--booster-brand-green-active); }
   .promo-btn :global(svg) { display: block; width: 12px; height: 12px; flex-shrink: 0; }
-  /* Centered decoration. Its bottom overhangs the block's bottom edge by a
-   * few px (into the transparent strip below the block — the extra window
-   * height in POPUP_H makes room), and its top rises across the gap onto the
-   * panel. Below title/button (z1 < z2), above panel + block bg.
-   * Height/offset tuned live against the mockup. */
+  /* Centered decoration. Its bottom overhangs the block's bottom edge into the
+   * transparent strip below the block and floats there (full-height body +
+   * extra POPUP_H make room so it isn't clipped at the window edge); its top
+   * rises across the gap onto the panel. Below title/button (z1 < z2), above
+   * panel + block bg. Height/offset tuned live against the mockup. */
   .promo-money {
     position: absolute;
     left: 50%;
-    bottom: -5px;
-    transform: translateX(-50%);
+    bottom: -10px;
+    /* scale(0.8): 20% smaller, about the element centre (default origin) so
+     * the illustration's centre stays pinned while it shrinks. */
+    transform: translateX(-50%) scale(0.8);
     height: 68px;
     z-index: 1;
     pointer-events: none;

@@ -40,13 +40,14 @@ const WINDOW_TERMS   = 'sb_terms';
 const WINDOW_PRIVACY = 'sb_privacy';
 
 const POPUP_W = 378;
-// 248 popup panel + 8 transparent gap + 48 promo block + 8 transparent
-// overhang strip = 312. The extra height below the panel is empty/transparent
-// window space where the detached «Каталог» promo floats and the money
-// illustration overhangs the block's bottom edge (see App.svelte / reset.css).
-// The panel itself stays 248 and its position (anchored at the header button)
-// is unchanged.
-const POPUP_H = 312;
+// 248 popup panel + 8 transparent gap + 48 promo block = 304 block bottom;
+// the money illustration overhangs 10 px below that (to 314), then an 8 px
+// transparent air strip lets it float uncut = 322. The extra height below the
+// panel is empty/transparent window space where the detached «Каталог» promo
+// floats and the money illustration hangs (see App.svelte / reset.css). The
+// panel itself stays 248 and its position (anchored at the header button) is
+// unchanged.
+const POPUP_H = 322;
 
 /**
  * Main-shell plugin install entry. Invoked by the plugin host when this

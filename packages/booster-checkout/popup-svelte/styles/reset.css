@@ -10,6 +10,11 @@ html, body {
   background: transparent;
   font-family: var(--booster-font-stack);
   color: var(--booster-text-primary);
+  /* Fill the whole popup window so overflow:hidden clips at the window edge,
+   * not at the in-flow content height (panel+gap+promo). Without this, body
+   * shrinks to the block and cuts off the money illustration that overhangs
+   * below it into the transparent floating strip. */
+  height: 100%;
   overflow: hidden;
   user-select: none;
   -webkit-user-select: none;
