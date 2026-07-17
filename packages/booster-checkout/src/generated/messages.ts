@@ -24,6 +24,10 @@ const ru = {
       receive: 'Получите:',
       total_will_be: 'Итого на балансе будет',
     },
+    keys: {
+      purchase_window_taskbar_title: 'Покупка ключа',
+      purchase_window_title: 'Покупка ключа — «{gameName:string}»',
+    },
     menu: {
       faq: 'FAQ',
       my_orders: 'МОИ ЗАКАЗЫ',
