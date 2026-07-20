@@ -59,13 +59,50 @@ function findCartHeaderNow(): HTMLElement | null {
 
 interface Anchor { parent: HTMLElement; before: Node | null }
 
-// Prefer sitting directly under the cart header. If Steam rewords it past
-// recognition, fall back to the total block — an anchor the feature already
-// can't work without — so the bar degrades in POSITION rather than vanishing.
+// Steam lays the cart out as a flex row: [items column | summary column]. Given
+// the total's label, walk up to the row child that CONTAINS it — that is the
+// summary column — and return its sibling, the items column.
+function isColumnRow(el: HTMLElement): boolean {
+  // Only a real flex/grid row splits the cart into columns. Without this check
+  // any parent with two children qualifies — including the total block itself,
+  // whose second child is just the price text.
+  try {
+    // Resolve through the element's OWN window, not the global: the global is
+    // absent in some hosts (and in tests), where a bare getComputedStyle throws
+    // and the catch would silently answer "not a row".
+    const view = el.ownerDocument?.defaultView as (Window & typeof globalThis) | null;
+    const d = view?.getComputedStyle(el).display ?? el.style?.display ?? '';
+    return d === 'flex' || d === 'grid' || d === 'inline-flex' || d === 'inline-grid';
+  } catch { return false; }
+}
+
+function findItemsColumn(label: HTMLElement): HTMLElement | null {
+  let summary: HTMLElement = label;
+  while (summary.parentElement) {
+    const row = summary.parentElement;
+    const siblings = [...row.children] as HTMLElement[];
+    if (siblings.length >= 2 && isColumnRow(row)) {
+      const items = siblings.find((c) => c !== summary && !c.contains(label) && c.children.length > 0);
+      if (items) return items;
+    }
+    summary = row;
+  }
+  return null;
+}
+
+// Anchor INSIDE the items column. Inserting above the row instead pushed both
+// columns down, so the "Общая стоимость / Перейти к оплате" panel sank by the
+// bar's height. Falls back to the header, then to the total block, so a layout
+// change degrades the bar's POSITION rather than removing it.
 function findAnchorNow(): Anchor | null {
+  const label = findCartTotalLabel(document);
+  if (label) {
+    const items = findItemsColumn(label);
+    if (items) return { parent: items, before: items.firstChild };
+  }
   const header = findCartHeaderNow();
   if (header?.parentElement) return { parent: header.parentElement, before: header.nextSibling };
-  const block = findCartTotalLabel(document)?.parentElement;
+  const block = label?.parentElement;
   if (block?.parentElement) return { parent: block.parentElement, before: block };
   return null;
 }

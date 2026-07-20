@@ -291,4 +291,47 @@ describe('registerCartPage', () => {
     await tick();
     expect(document.getElementById('booster-topup-bar')).toBeNull();
   });
+
+// Steam lays the cart out as a flex row: [items column | summary column].
+// Inserting the bar as a sibling ABOVE that row pushed BOTH columns down, so
+// the "Общая стоимость / Перейти к оплате" panel sank by the bar's height.
+// The bar belongs INSIDE the items column instead.
+const TWO_COLUMN_MARKUP = `
+  <div class="Panel">
+    <div class="hdr">Ваша корзина (товаров: 3)</div>
+    <div class="row" style="display:flex">
+      <div class="items"><div class="game">Life is Strange</div></div>
+      <div class="summary"><div>Общая стоимость</div><div>28 930,00₸</div></div>
+    </div>
+  </div>`;
+
+test('bar goes inside the items column, leaving the summary column in place', async () => {
+  const { sb, pageReg, fireBus } = makeSbStub();
+  registerCartPage(sb);
+  fireBus('booster-checkout.user.snapshot', { accountName: 'u', currency: 'KZT', balance: 17181.65 });
+  setBody(TWO_COLUMN_MARKUP);
+  await findMount(pageReg)({ url: new URL('https://store.steampowered.com/cart/'), signal: new AbortController().signal });
+  await tick();
+  const bar = document.getElementById('booster-topup-bar')!;
+  expect(bar).not.toBeNull();
+  // Inside the items column, first child — above the game list.
+  expect(document.querySelector('.items')!.contains(bar)).toBe(true);
+  expect(document.querySelector('.items')!.firstElementChild).toBe(bar);
+  // NOT a sibling of the flex row, which is what pushed the summary down.
+  expect(document.querySelector('.row')!.previousElementSibling).not.toBe(bar);
+  expect(document.querySelector('.summary')!.contains(bar)).toBe(false);
+});
+
+test('falls back to the header anchor when there is no two-column row', async () => {
+  const { sb, pageReg, fireBus } = makeSbStub();
+  registerCartPage(sb);
+  fireBus('booster-checkout.user.snapshot', { accountName: 'u', currency: 'KZT', balance: 5000 });
+  setBody(`<div class="panel"><div class="hdr">Ваша корзина</div></div>
+           <div class="t"><div>Общая стоимость</div><div>19 031,00₸</div></div>`);
+  await findMount(pageReg)({ url: new URL('https://store.steampowered.com/cart/'), signal: new AbortController().signal });
+  await tick();
+  const bar = document.getElementById('booster-topup-bar')!;
+  expect(bar).not.toBeNull();
+  expect(document.querySelector('.hdr')!.nextElementSibling).toBe(bar);
+});
 });
