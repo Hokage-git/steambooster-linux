@@ -177,6 +177,108 @@ describe('registerCartPage', () => {
     expect(document.getElementById('booster-topup-bar')).toBeNull();
   });
 
+  // Steam now renders the cart header with an item counter and a breadcrumb
+  // copy of the same text: "Ваша корзина (товаров: 3)". Real markup, captured
+  // from store.steampowered.com/cart/ (class names are hashed CSS-modules).
+  const CART_MARKUP = `
+    <div class="Panel Focusable">
+      <div class="crumbs"><a href="/">Домашняя страница</a><span>&gt; Ваша корзина (товаров: 3)</span></div>
+      <div class="hdr">Ваша корзина (товаров: 3)</div>
+      <div class="items">Life is Strange: Double Exposure20 000,00₸</div>
+    </div>
+    <div class="t"><div>Общая стоимость</div><div>28 930,00₸</div></div>`;
+
+  test('header with item counter → bar still renders', async () => {
+    const { sb, pageReg, fireBus } = makeSbStub();
+    registerCartPage(sb);
+    fireBus('booster-checkout.user.snapshot', { accountName: 'u', currency: 'KZT', balance: 17181.65 });
+    setBody(CART_MARKUP);
+    await findMount(pageReg)({ url: new URL('https://store.steampowered.com/cart/'), signal: new AbortController().signal });
+    await tick();
+    const bar = document.getElementById('booster-topup-bar')!;
+    expect(bar).not.toBeNull();
+    expect((bar.querySelector('.booster-topup-input') as HTMLInputElement).value).toBe('11749'); // ceil(28930-17181.65)
+  }, 15000);
+
+  test('bar anchors to the real header, not the breadcrumb', async () => {
+    const { sb, pageReg, fireBus } = makeSbStub();
+    registerCartPage(sb);
+    fireBus('booster-checkout.user.snapshot', { accountName: 'u', currency: 'KZT', balance: 17181.65 });
+    setBody(CART_MARKUP);
+    await findMount(pageReg)({ url: new URL('https://store.steampowered.com/cart/'), signal: new AbortController().signal });
+    await tick();
+    const bar = document.getElementById('booster-topup-bar')!;
+    expect(bar).not.toBeNull();
+    expect(document.querySelector('.hdr')!.nextElementSibling).toBe(bar);
+    expect(document.querySelector('.crumbs')!.contains(bar)).toBe(false);
+  }, 15000);
+
+  // Resilience: the header text is Steam's, not ours — it can be reworded or
+  // localized. The total label is the ONE anchor the feature genuinely needs
+  // (no total → no shortfall to show), so a missing header must degrade to
+  // anchoring off the total block instead of silently rendering nothing.
+  // Regression: the store supernav has its own "Корзина" link, and it comes
+  // FIRST in document order. Matching the bare word put the bar inside that
+  // <a> in the page header (observed live, rect y=-15, off-screen).
+  test('supernav "Корзина" link is never used as the anchor', async () => {
+    const { sb, pageReg, fireBus } = makeSbStub();
+    registerCartPage(sb);
+    fireBus('booster-checkout.user.snapshot', { accountName: 'u', currency: 'KZT', balance: 5000 });
+    setBody(`<div class="nav"><a class="cartlink" href="/cart/"><div>Корзина</div><div>3</div></a></div>
+             <div class="panel">
+               <div class="crumbs"><a href="/">Домашняя страница</a><span>&gt; Ваша корзина (товаров: 3)</span></div>
+               <div class="hdr">Ваша корзина (товаров: 3)</div>
+             </div>
+             <div class="t"><div>Общая стоимость</div><div>19 031,00₸</div></div>`);
+    await findMount(pageReg)({ url: new URL('https://store.steampowered.com/cart/'), signal: new AbortController().signal });
+    await tick();
+    const bar = document.getElementById('booster-topup-bar')!;
+    expect(bar).not.toBeNull();
+    expect(document.querySelector('.cartlink')!.contains(bar)).toBe(false);
+    expect(document.querySelector('.hdr')!.nextElementSibling).toBe(bar);
+  }, 15000);
+
+  test('header text changed entirely → bar falls back above the total block', async () => {
+    const warned: string[] = [];
+    const origWarn = console.warn;
+    console.warn = (...a: unknown[]) => { warned.push(a.join(' ')); };
+    try {
+      const { sb, pageReg, fireBus } = makeSbStub();
+      registerCartPage(sb);
+      fireBus('booster-checkout.user.snapshot', { accountName: 'u', currency: 'KZT', balance: 5000 });
+      setBody(`<div class="wrap">
+                 <div class="hdr">Shopping Cart</div>
+                 <div class="totalblock"><div>Общая стоимость</div><div>19 031,00₸</div></div>
+               </div>`);
+      await findMount(pageReg)({ url: new URL('https://store.steampowered.com/cart/'), signal: new AbortController().signal });
+      await tick();
+      const bar = document.getElementById('booster-topup-bar')!;
+      expect(bar).not.toBeNull();
+      expect(document.querySelector('.totalblock')!.previousElementSibling).toBe(bar);
+      expect(warned.join('\n')).toContain('cart header not found');
+    } finally {
+      console.warn = origWarn;
+    }
+  }, 15000);
+
+  test('neither header nor total → no bar, and it says so', async () => {
+    const warned: string[] = [];
+    const origWarn = console.warn;
+    console.warn = (...a: unknown[]) => { warned.push(a.join(' ')); };
+    try {
+      const { sb, pageReg, fireBus } = makeSbStub();
+      registerCartPage(sb);
+      fireBus('booster-checkout.user.snapshot', { accountName: 'u', currency: 'KZT', balance: 5000 });
+      setBody(`<div class="wrap">Steam redesigned this page</div>`);
+      await findMount(pageReg)({ url: new URL('https://store.steampowered.com/cart/'), signal: new AbortController().signal });
+      await tick();
+      expect(document.getElementById('booster-topup-bar')).toBeNull();
+      expect(warned.join('\n')).toContain('no anchor');
+    } finally {
+      console.warn = origWarn;
+    }
+  }, 15000);
+
   test('reactive: balance update via new snapshot recomputes', async () => {
     const { sb, pageReg, fireBus } = makeSbStub();
     registerCartPage(sb);
