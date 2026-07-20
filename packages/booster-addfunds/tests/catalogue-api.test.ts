@@ -67,3 +67,42 @@ test('decide: no cache → no render, fetch', () => {
 test('decide: empty-marker fresh → no render, no fetch', () => {
   expect(decide(1_000_000, rec(0, TTL_MS - 1, TTL_MS - 1))).toEqual({ render: null, shouldFetch: false });
 });
+
+// The carousel API must receive the account's region + currency so the backend
+// can tailor the game list. Values are ISO: country alpha-2 upper (KZ), currency
+// ISO-4217 (KZT). Contract with the backend — see the region-games doc.
+function sbCapture(reply: any): { sb: any; urls: string[] } {
+  const urls: string[] = [];
+  return { sb: { net: { fetch: async (u: string) => { urls.push(u); return reply; } } }, urls };
+}
+const OK = { ok: true, status: 200, headers: {}, json: async () => ({ success: true, data: [{ link: 'https://steambalance.cc/g', cover: 'https://cdn/x.jpg' }] }) };
+
+test('fetch: appends country + currency as query params', async () => {
+  const { sb, urls } = sbCapture(OK);
+  await fetchCatalogue(sb, { country: 'KZ', currency: 'KZT' });
+  expect(urls[0]).toContain('?');
+  const q = new URL(urls[0]!).searchParams;
+  expect(q.get('country')).toBe('KZ');
+  expect(q.get('currency')).toBe('KZT');
+});
+
+test('fetch: omits a missing param rather than sending empty', async () => {
+  const { sb, urls } = sbCapture(OK);
+  await fetchCatalogue(sb, { country: 'KZ', currency: null });
+  const q = new URL(urls[0]!).searchParams;
+  expect(q.get('country')).toBe('KZ');
+  expect(q.has('currency')).toBe(false);
+});
+
+test('fetch: no params → bare url, no query string', async () => {
+  const { sb, urls } = sbCapture(OK);
+  await fetchCatalogue(sb);
+  expect(urls[0]).not.toContain('?');
+});
+
+test('fetch: still honors the abort signal alongside params', async () => {
+  const { sb } = sbCapture(OK);
+  const ac = new AbortController();
+  const r = await fetchCatalogue(sb, { country: 'KZ', currency: 'KZT', signal: ac.signal });
+  expect(r.status).toBe('ok');
+});

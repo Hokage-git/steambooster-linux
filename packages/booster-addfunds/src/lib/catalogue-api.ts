@@ -12,10 +12,29 @@ function isHttpUrl(s: string): boolean {
   return /^https?:\/\//i.test(s);
 }
 
-export async function fetchCatalogue(sb: SbApi, signal?: AbortSignal): Promise<FetchResult> {
+export interface CatalogueParams {
+  /** Store country, ISO 3166-1 alpha-2 upper (e.g. 'KZ'). */
+  country?: string | null;
+  /** Wallet currency, ISO 4217 (e.g. 'KZT'). */
+  currency?: string | null;
+  signal?: AbortSignal;
+}
+
+// Region + currency ride along as query params so the backend can tailor the
+// carousel to the account. Empty/unknown values are omitted, not sent blank.
+function buildCatalogueUrl(params?: CatalogueParams): string {
+  const q = new URLSearchParams();
+  if (params?.country) q.set('country', params.country);
+  if (params?.currency) q.set('currency', params.currency);
+  const qs = q.toString();
+  return qs ? `${CATALOGUE_API}?${qs}` : CATALOGUE_API;
+}
+
+export async function fetchCatalogue(sb: SbApi, params?: CatalogueParams): Promise<FetchResult> {
   try {
     if (!sb || !sb.net) return { status: 'error' };
-    const r = await sb.net.fetch(CATALOGUE_API, signal ? { signal } : undefined);
+    const signal = params?.signal;
+    const r = await sb.net.fetch(buildCatalogueUrl(params), signal ? { signal } : undefined);
     if (!r.ok) return { status: 'error' };
     const body = await r.json() as { success?: boolean; data?: unknown };
     if (body.success !== true || !Array.isArray(body.data)) return { status: 'error' };

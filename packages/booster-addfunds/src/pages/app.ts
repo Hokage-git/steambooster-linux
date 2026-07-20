@@ -274,7 +274,13 @@ export function registerAppPage(sb: SbApi, deps: AppPageDeps = {}): void {
       };
       if (d.render) insert(d.render);
       if (d.shouldFetch) {
-        const res = await fetchCatalogue(sb, ctx.signal);
+        // Region from the store country, currency from the user snapshot — both
+        // normalized to the ISO upper-case the backend contract expects. Either
+        // may be unknown (cold snapshot / no Steam cap); fetchCatalogue omits
+        // whichever is missing rather than sending it blank.
+        const country = (await sb.steam?.getStoreCountry?.())?.toUpperCase() ?? null;
+        const currency = snap.get()?.currency?.toUpperCase() ?? null;
+        const res = await fetchCatalogue(sb, { country, currency, signal: ctx.signal });
         if (ctx.signal.aborted) return teardown;
         if (res.status === 'ok') {
           writeCache({ items: res.items, fetchedAt: now, attemptedAt: now });
