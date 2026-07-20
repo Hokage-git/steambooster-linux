@@ -278,6 +278,10 @@ export function registerAppPage(sb: SbApi, deps: AppPageDeps = {}): void {
         // normalized to the ISO upper-case the backend contract expects. Either
         // may be unknown (cold snapshot / no Steam cap); fetchCatalogue omits
         // whichever is missing rather than sending it blank.
+        // getStoreCountry is internally bounded (~3s on a cold steamId) and only
+        // gates the FIRST carousel appearance when there's no cache; cached
+        // renders above are synchronous. One-time, acceptable — not worth
+        // shipping the carousel region-blind to shave a cold-start second.
         const country = (await sb.steam?.getStoreCountry?.())?.toUpperCase() ?? null;
         const currency = snap.get()?.currency?.toUpperCase() ?? null;
         const res = await fetchCatalogue(sb, { country, currency, signal: ctx.signal });

@@ -100,9 +100,11 @@ test('fetch: no params → bare url, no query string', async () => {
   expect(urls[0]).not.toContain('?');
 });
 
-test('fetch: still honors the abort signal alongside params', async () => {
-  const { sb } = sbCapture(OK);
+test('fetch: forwards the abort signal in the fetch init alongside params', async () => {
+  const inits: any[] = [];
+  const sb = { net: { fetch: async (_u: string, init?: any) => { inits.push(init); return OK; } } } as any;
   const ac = new AbortController();
   const r = await fetchCatalogue(sb, { country: 'KZ', currency: 'KZT', signal: ac.signal });
   expect(r.status).toBe('ok');
+  expect(inits[0]?.signal).toBe(ac.signal);
 });

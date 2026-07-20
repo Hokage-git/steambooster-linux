@@ -41,3 +41,12 @@ test('background click fires onBackgroundClick; card click does not', () => {
   card.click();
   expect(bg).toBe(1); // stopPropagation kept bg from firing again
 });
+
+// Empty items would make setCount = ceil(x/0) = Infinity and hang the copy loop.
+// Unreachable in prod, but the guard must return early rather than freeze.
+test('empty items → returns bare root, no viewport, does not hang', () => {
+  const el = buildRegionGamesBlock([], { onBackgroundClick: () => {} });
+  expect(el.id).toBe('booster-region-games');
+  expect(el.querySelector('.rg-viewport')).toBeNull();
+  expect(el.querySelectorAll('a.rg-card').length).toBe(0);
+});

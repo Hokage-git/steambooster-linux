@@ -48,6 +48,12 @@ export function buildRegionGamesBlock(items: Item[], opts: RegionGamesBlockOptio
   header.appendChild(logo);
   root.appendChild(header);
 
+  // Guard the empty case: setWidth would be 0 and setCount ceil(x/0) = Infinity,
+  // freezing the store thread in the copy loop below. Unreachable today (callers
+  // only pass non-empty item sets) but the failure mode is a hang, not a
+  // misrender, so keep the guard.
+  if (items.length === 0) return root;
+
   const viewport = document.createElement('div');
   viewport.className = 'rg-viewport';
 
