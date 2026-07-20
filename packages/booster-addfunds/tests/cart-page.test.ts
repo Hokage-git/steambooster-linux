@@ -301,7 +301,7 @@ const TWO_COLUMN_MARKUP = `
     <div class="hdr">Ваша корзина (товаров: 3)</div>
     <div class="row" style="display:flex">
       <div class="items"><div class="game">Life is Strange</div></div>
-      <div class="summary"><div>Общая стоимость</div><div>28 930,00₸</div></div>
+      <div class="summary"><div class="hidden-copy" style="display:none"><div>Общая стоимость</div><div>28 930,00₸</div></div><div><div>Общая стоимость</div><div>28 930,00₸</div></div></div>
     </div>
   </div>`;
 

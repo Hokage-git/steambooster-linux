@@ -76,18 +76,19 @@ function isColumnRow(el: HTMLElement): boolean {
   } catch { return false; }
 }
 
-function findItemsColumn(label: HTMLElement): HTMLElement | null {
-  let summary: HTMLElement = label;
-  while (summary.parentElement) {
-    const row = summary.parentElement;
-    const siblings = [...row.children] as HTMLElement[];
-    if (siblings.length >= 2 && isColumnRow(row)) {
-      const items = siblings.find((c) => c !== summary && !c.contains(label) && c.children.length > 0);
-      if (items) return items;
-    }
-    summary = row;
-  }
-  return null;
+// Walk DOWN from the header's container to the two-column row, instead of UP
+// from the total: Steam renders a second, display:none copy of the total for a
+// narrow layout, and climbing from that copy lands in the wrong subtree.
+// The row is the header's sibling — a flex/grid box with exactly two children,
+// [items | summary] — and the items column is the first of them.
+function findItemsColumn(header: HTMLElement): HTMLElement | null {
+  const container = header.parentElement;
+  if (!container) return null;
+  const row = ([...container.children] as HTMLElement[]).find(
+    (c) => c !== header && isColumnRow(c) && c.children.length === 2,
+  );
+  const items = row?.children[0] as HTMLElement | undefined;
+  return items && items.children.length > 0 ? items : null;
 }
 
 // Anchor INSIDE the items column. Inserting above the row instead pushed both
@@ -95,14 +96,13 @@ function findItemsColumn(label: HTMLElement): HTMLElement | null {
 // bar's height. Falls back to the header, then to the total block, so a layout
 // change degrades the bar's POSITION rather than removing it.
 function findAnchorNow(): Anchor | null {
-  const label = findCartTotalLabel(document);
-  if (label) {
-    const items = findItemsColumn(label);
-    if (items) return { parent: items, before: items.firstChild };
-  }
   const header = findCartHeaderNow();
-  if (header?.parentElement) return { parent: header.parentElement, before: header.nextSibling };
-  const block = label?.parentElement;
+  if (header) {
+    const items = findItemsColumn(header);
+    if (items) return { parent: items, before: items.firstChild };
+    if (header.parentElement) return { parent: header.parentElement, before: header.nextSibling };
+  }
+  const block = findCartTotalLabel(document)?.parentElement;
   if (block?.parentElement) return { parent: block.parentElement, before: block };
   return null;
 }
