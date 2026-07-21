@@ -14,18 +14,20 @@ beforeEach(() => {
 
 const base: KeyItem = { itemId: 1, name: 'X', isActive: true, regionLabel: 'Global', packageId: 13533, productType: 'base', price: 129.58, oldPrice: null, discountPercent: 0 };
 
-test('active item: price + buy fires onBuy', () => {
+test('active item: price + buy fires onBuy; single price gets --single modifier', () => {
   let clicked = 0;
   const { root } = buildEditionOfferChip({ item: base, onBuy: () => clicked++ });
   expect(root.querySelector('.booster-eo-now')!.textContent).toBe('129,58 ₽');
+  expect(root.classList.contains('booster-eo--single')).toBe(true);
   (root.querySelector('.booster-eo-buy') as HTMLButtonElement).click();
   expect(clicked).toBe(1);
 });
 
-test('discount + old price', () => {
+test('discount + old price → no --single modifier (two-line price stack)', () => {
   const { root } = buildEditionOfferChip({ item: { ...base, price: 73.71, oldPrice: 99, discountPercent: 26 } });
   expect(root.querySelector('.booster-eo-was')!.textContent).toBe('99 ₽');
   expect(root.querySelector('.booster-eo-discount')!.textContent).toBe('-26%');
+  expect(root.classList.contains('booster-eo--single')).toBe(false);
 });
 
 test('inactive: Скоро в продаже, no button', () => {

@@ -44,10 +44,16 @@ test('inactive item → "Скоро в продаже", no buy button', () => {
   expect(row.textContent).toContain('Скоро в продаже');
 });
 
-test('no discount → no badge, no struck price', () => {
+test('no discount → no badge, no struck price, actions get --no-discount modifier', () => {
   const el = buildKeysBlock([{ ...base, discountPercent: 0, oldPrice: null }], { onBuy: () => {} });
   expect(el.querySelector('.booster-keys-discount')).toBeNull();
   expect(el.querySelector('.booster-keys-orig')).toBeNull();
+  expect(el.querySelector('.booster-keys-actions')!.classList.contains('booster-keys-actions--no-discount')).toBe(true);
+});
+
+test('discounted item → actions do NOT get the --no-discount modifier', () => {
+  const el = buildKeysBlock([base], { onBuy: () => {} });
+  expect(el.querySelector('.booster-keys-actions')!.classList.contains('booster-keys-actions--no-discount')).toBe(false);
 });
 
 test('multiple items → multiple rows; row handle affects only that row', () => {

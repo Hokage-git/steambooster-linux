@@ -97,6 +97,10 @@ function buildRow(item: KeyItem, onBuy: (item: KeyItem, row: KeyRowHandle) => vo
       badge.className = 'booster-keys-discount';
       badge.textContent = `-${item.discountPercent}%`;
       actions.appendChild(badge);
+    } else {
+      // No discount badge on the left: pad the price so it sits symmetric with
+      // the gap on its right (before the buy button) inside the black chip.
+      actions.classList.add('booster-keys-actions--no-discount');
     }
 
     const price = document.createElement('div');
