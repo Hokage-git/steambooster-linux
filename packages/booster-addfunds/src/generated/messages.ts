@@ -10,7 +10,7 @@ const ru = {
     edition_offer_aria_label: 'Предложение SteamBalance — купить дешевле',
     edition_offer_soon_badge: 'СКОРО',
     keys_block_aria_label: 'Доступные ключи для покупки в вашем регионе',
-    keys_block_title: 'У нас имеются ключи для игры в вашем регионе!',
+    keys_block_title: 'У нас игра доступна для вашего региона:',
     keys_buy_button: 'Купить',
     keys_email_modal_cancel: 'Отмена',
     keys_email_modal_confirm: 'Продолжить',

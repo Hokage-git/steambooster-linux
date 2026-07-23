@@ -17,7 +17,7 @@ const base: KeyItem = { itemId: 7, name: 'Game X', isActive: true, regionLabel: 
 test('title + one row per item: name, region chip, price, discount, struck old price, buy', () => {
   const el = buildKeysBlock([base], { onBuy: () => {} });
   expect(el.id).toBe('booster-keys-block');
-  expect(el.querySelector('.booster-keys-title')!.textContent).toBe('У нас имеются ключи для игры в вашем регионе!');
+  expect(el.querySelector('.booster-keys-title')!.textContent).toBe('У нас игра доступна для вашего региона:');
   const rows = el.querySelectorAll('.booster-keys-row');
   expect(rows.length).toBe(1);
   expect(rows[0]!.querySelector('.booster-keys-name')!.textContent).toBe('Купить Game X');
