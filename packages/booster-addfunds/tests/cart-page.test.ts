@@ -173,7 +173,13 @@ describe('registerCartPage', () => {
     expect(document.getElementById('booster-topup-bar')).not.toBeNull();
     // user removes an item → total now below balance
     (document.querySelector('.val') as HTMLElement).textContent = '4 000,00₸';
-    await tick(400); // cross the debounce
+    // Poll for the debounced reactive removal (DEBOUNCE_MS=200) instead of a
+    // fixed sleep: under full-suite / release load the debounce timer can drift
+    // well past a fixed 400ms wait (event-loop starvation), flaking this
+    // assertion. Bounded so a real regression (bar never removed) still fails.
+    for (let i = 0; i < 150 && document.getElementById('booster-topup-bar'); i++) {
+      await tick(20);
+    }
     expect(document.getElementById('booster-topup-bar')).toBeNull();
   });
 
