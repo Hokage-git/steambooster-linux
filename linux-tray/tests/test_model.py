@@ -2,6 +2,7 @@ import unittest
 
 from steambooster_tray.model import (
     HealthState,
+    RecoveryDecision,
     RecoveryPolicy,
     classify_health,
 )
@@ -27,32 +28,51 @@ class HealthModelTests(unittest.TestCase):
         self.assertEqual(snapshot.state, HealthState.RECOVERING)
         self.assertIn("Пополнить", snapshot.detail)
 
+    def test_running_steam_without_cdp_is_not_launcher_recoverable(self):
+        snapshot = classify_health(True, True, False, cdp_available=False)
+        self.assertEqual(snapshot.state, HealthState.FAILED)
+        self.assertFalse(snapshot.cdp_available)
+        self.assertIn("CDP", snapshot.detail)
+
 
 class RecoveryPolicyTests(unittest.TestCase):
     def test_requires_three_consecutive_bad_samples(self):
-        policy = RecoveryPolicy(bad_samples_required=3)
-        self.assertFalse(policy.observe(False, now=1))
-        self.assertFalse(policy.observe(False, now=2))
-        self.assertTrue(policy.observe(False, now=3))
+        policy = RecoveryPolicy(bad_samples_required=3, grace_seconds=0, started_at=0)
+        self.assertEqual(policy.observe(False, now=1), RecoveryDecision.NONE)
+        self.assertEqual(policy.observe(False, now=2), RecoveryDecision.NONE)
+        self.assertEqual(policy.observe(False, now=3), RecoveryDecision.RESTART)
 
     def test_healthy_sample_resets_bad_sample_counter(self):
-        policy = RecoveryPolicy(bad_samples_required=3)
+        policy = RecoveryPolicy(bad_samples_required=3, grace_seconds=0, started_at=0)
         policy.observe(False, now=1)
         policy.observe(False, now=2)
-        self.assertFalse(policy.observe(True, now=3))
-        self.assertFalse(policy.observe(False, now=4))
+        self.assertEqual(policy.observe(True, now=3), RecoveryDecision.NONE)
+        self.assertEqual(policy.observe(False, now=4), RecoveryDecision.NONE)
+
+    def test_startup_grace_ignores_bad_samples_for_thirty_seconds(self):
+        policy = RecoveryPolicy(
+            bad_samples_required=3,
+            grace_seconds=30,
+            started_at=0,
+        )
+        self.assertEqual(policy.observe(False, now=29), RecoveryDecision.NONE)
+        self.assertEqual(policy.observe(False, now=30), RecoveryDecision.NONE)
+        self.assertEqual(policy.observe(False, now=31), RecoveryDecision.NONE)
+        self.assertEqual(policy.observe(False, now=32), RecoveryDecision.RESTART)
 
     def test_limits_restarts_to_three_per_ten_minutes(self):
         policy = RecoveryPolicy(
             bad_samples_required=1,
             max_restarts=3,
             window_seconds=600,
+            grace_seconds=0,
+            started_at=0,
         )
-        self.assertTrue(policy.observe(False, now=1))
-        self.assertTrue(policy.observe(False, now=2))
-        self.assertTrue(policy.observe(False, now=3))
-        self.assertFalse(policy.observe(False, now=4))
-        self.assertTrue(policy.observe(False, now=602))
+        self.assertEqual(policy.observe(False, now=1), RecoveryDecision.RESTART)
+        self.assertEqual(policy.observe(False, now=2), RecoveryDecision.RESTART)
+        self.assertEqual(policy.observe(False, now=3), RecoveryDecision.RESTART)
+        self.assertEqual(policy.observe(False, now=4), RecoveryDecision.EXHAUSTED)
+        self.assertEqual(policy.observe(False, now=602), RecoveryDecision.RESTART)
 
 
 if __name__ == "__main__":

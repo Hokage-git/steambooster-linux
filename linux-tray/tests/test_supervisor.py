@@ -11,6 +11,7 @@ class FakeRunner:
         self.service_active = service_active
         self.probe = probe or {
             "steam_available": True,
+            "cdp_available": True,
             "main_available": True,
             "button_present": True,
         }
@@ -44,6 +45,17 @@ class SupervisorTests(unittest.TestCase):
     def test_inactive_launcher_is_failed_even_if_probe_has_button(self):
         supervisor = self.make_supervisor(FakeRunner(service_active=False))
         self.assertEqual(supervisor.health().state, HealthState.FAILED)
+
+    def test_cdp_unavailable_is_reported_without_launcher_recovery(self):
+        runner = FakeRunner(probe={
+            "steam_available": True,
+            "cdp_available": False,
+            "main_available": False,
+            "button_present": False,
+        })
+        snapshot = self.make_supervisor(runner).health()
+        self.assertEqual(snapshot.state, HealthState.FAILED)
+        self.assertFalse(snapshot.cdp_available)
 
     def test_malformed_probe_is_failed_without_throwing(self):
         runner = FakeRunner()

@@ -58,12 +58,14 @@ class BoosterSupervisor:
                 bool(data.get("steam_available")),
                 launcher_active,
                 bool(data.get("button_present")),
+                cdp_available=bool(data.get("cdp_available")),
             )
         except (json.JSONDecodeError, OSError, subprocess.SubprocessError, ValueError):
             return HealthSnapshot(
                 HealthState.FAILED,
                 "Проверка Booster завершилась ошибкой",
                 True,
+                False,
                 launcher_active,
                 False,
             )
@@ -83,4 +85,3 @@ class BoosterSupervisor:
         )
         if result.returncode != 0:
             raise RuntimeError(result.stderr.strip() or "Не удалось запустить Booster")
-

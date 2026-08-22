@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from steambooster_tray.app import TrayPaths, is_recoverable, runtime_lock_path
+from steambooster_tray.app import ActionGate, TrayPaths, is_recoverable, runtime_lock_path
 from steambooster_tray.model import HealthState, classify_health
 
 
@@ -32,6 +32,17 @@ class AppHelperTests(unittest.TestCase):
         snapshot = classify_health(False, False, False)
         self.assertEqual(snapshot.state, HealthState.STEAM_UNAVAILABLE)
         self.assertFalse(is_recoverable(snapshot))
+
+    def test_running_steam_without_cdp_is_not_auto_recoverable(self):
+        snapshot = classify_health(True, True, False, cdp_available=False)
+        self.assertFalse(is_recoverable(snapshot))
+
+    def test_action_gate_rejects_overlapping_actions(self):
+        gate = ActionGate()
+        self.assertTrue(gate.enter())
+        self.assertFalse(gate.enter())
+        gate.leave()
+        self.assertTrue(gate.enter())
 
 
 if __name__ == "__main__":

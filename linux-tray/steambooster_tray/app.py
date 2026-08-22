@@ -11,7 +11,7 @@ from PyQt6.QtCore import QObject, QLockFile, QRunnable, QThreadPool, QTimer, QUr
 from PyQt6.QtGui import QAction, QColor, QDesktopServices, QFont, QIcon, QPainter, QPixmap
 from PyQt6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
-from .model import HealthSnapshot, HealthState, RecoveryPolicy
+from .model import HealthSnapshot, HealthState, RecoveryDecision, RecoveryPolicy
 from .presentation import MENU_LABELS, state_color
 from .supervisor import BoosterSupervisor
 
@@ -38,10 +38,24 @@ def runtime_lock_path() -> Path:
 
 
 def is_recoverable(snapshot: HealthSnapshot) -> bool:
-    return snapshot.steam_available and snapshot.state in {
+    return snapshot.steam_available and snapshot.cdp_available and snapshot.state in {
         HealthState.RECOVERING,
         HealthState.FAILED,
     }
+
+
+class ActionGate:
+    def __init__(self) -> None:
+        self._active = False
+
+    def enter(self) -> bool:
+        if self._active:
+            return False
+        self._active = True
+        return True
+
+    def leave(self) -> None:
+        self._active = False
 
 
 def make_icon(state: HealthState) -> QIcon:
@@ -88,6 +102,8 @@ class TrayController(QObject):
         self.recovery_policy = RecoveryPolicy()
         self.thread_pool = QThreadPool.globalInstance()
         self.health_task_running = False
+        self.action_gate = ActionGate()
+        self.active_tasks: set[BackgroundTask] = set()
 
         self.tray = QSystemTrayIcon(make_icon(HealthState.STEAM_UNAVAILABLE), self)
         self.tray.setToolTip("SteamBooster — проверка состояния")
@@ -96,8 +112,10 @@ class TrayController(QObject):
         self.status_action.setEnabled(False)
         self.menu.addAction(self.status_action)
         self.menu.addSeparator()
-        self._add_action(MENU_LABELS["restore"], self.restore_overlay)
-        self._add_action(MENU_LABELS["restart"], self.restart_booster)
+        self.recovery_actions = [
+            self._add_action(MENU_LABELS["restore"], self.restore_overlay),
+            self._add_action(MENU_LABELS["restart"], self.restart_booster),
+        ]
         self.menu.addSeparator()
         self._add_action(MENU_LABELS["open_steam"], self.open_steam)
         self._add_action(MENU_LABELS["open_log"], self.open_log)
@@ -110,10 +128,17 @@ class TrayController(QObject):
         self.timer.setInterval(5000)
         self.timer.timeout.connect(self.refresh_health)
 
-    def _add_action(self, label: str, callback: Callable[[], None]) -> None:
+    def _add_action(self, label: str, callback: Callable[[], None]) -> QAction:
         action = QAction(label, self.menu)
         action.triggered.connect(callback)
         self.menu.addAction(action)
+        return action
+
+    def _start_task(self, task: BackgroundTask) -> None:
+        self.active_tasks.add(task)
+        task.signals.succeeded.connect(lambda _result, active=task: self.active_tasks.discard(active))
+        task.signals.failed.connect(lambda _message, active=task: self.active_tasks.discard(active))
+        self.thread_pool.start(task)
 
     def start(self) -> None:
         self.tray.show()
@@ -128,7 +153,7 @@ class TrayController(QObject):
         task = BackgroundTask(self.supervisor.health)
         task.signals.succeeded.connect(self._health_ready)
         task.signals.failed.connect(self._health_failed)
-        self.thread_pool.start(task)
+        self._start_task(task)
 
     def _health_ready(self, result: object) -> None:
         self.health_task_running = False
@@ -137,8 +162,11 @@ class TrayController(QObject):
             return
         self._set_state(result.state, result.detail)
         healthy_for_policy = not is_recoverable(result)
-        if self.recovery_policy.observe(healthy_for_policy, time.monotonic()):
+        decision = self.recovery_policy.observe(healthy_for_policy, time.monotonic())
+        if decision == RecoveryDecision.RESTART:
             self._run_action(self.supervisor.restart_launcher, "Автовосстановление Booster…")
+        elif decision == RecoveryDecision.EXHAUSTED:
+            self._set_state(HealthState.FAILED, "Лимит автовосстановления исчерпан")
 
     def _health_failed(self, message: str) -> None:
         self.health_task_running = False
@@ -150,13 +178,26 @@ class TrayController(QObject):
         self.status_action.setText(f"Статус: {detail}")
 
     def _run_action(self, action: Callable[[], object], pending_text: str) -> None:
+        if not self.action_gate.enter():
+            return
+        for menu_action in self.recovery_actions:
+            menu_action.setEnabled(False)
         self._set_state(HealthState.RECOVERING, pending_text)
         task = BackgroundTask(action)
-        task.signals.succeeded.connect(lambda _result: QTimer.singleShot(1200, self.refresh_health))
+        task.signals.succeeded.connect(self._action_succeeded)
         task.signals.failed.connect(self._action_failed)
-        self.thread_pool.start(task)
+        self._start_task(task)
+
+    def _action_succeeded(self, _result: object) -> None:
+        self.action_gate.leave()
+        for menu_action in self.recovery_actions:
+            menu_action.setEnabled(True)
+        QTimer.singleShot(1200, self.refresh_health)
 
     def _action_failed(self, message: str) -> None:
+        self.action_gate.leave()
+        for menu_action in self.recovery_actions:
+            menu_action.setEnabled(True)
         self._set_state(HealthState.FAILED, message or "Операция Booster не выполнена")
         self.tray.showMessage(
             "SteamBooster",
@@ -203,4 +244,3 @@ def main() -> int:
     controller = TrayController(application, TrayPaths.from_tray_root(tray_root))
     controller.start()
     return application.exec()
-

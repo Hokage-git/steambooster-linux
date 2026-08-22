@@ -1,0 +1,24 @@
+#!/bin/bash
+set -euo pipefail
+
+STEAM_BIN="${SB_STEAM_BIN:-/usr/bin/steam}"
+SYSTEMCTL_BIN="${SB_SYSTEMCTL_BIN:-/usr/bin/systemctl}"
+CDP_PORT="${SB_CDP_PORT:-8080}"
+STEAM_CDP_ARGS=("-cef-enable-debugging" "--remote-debugging-port=${CDP_PORT}")
+
+steam_has_cdp() {
+  pgrep -a steam 2>/dev/null | grep -qE "remote-debugging-port=${CDP_PORT}"
+}
+
+if steam_has_cdp; then
+  "$SYSTEMCTL_BIN" --user start steambooster-launcher.service
+  exec "$STEAM_BIN" "$@"
+fi
+
+if pgrep -x steam >/dev/null 2>&1; then
+  echo "Steam уже запущен без CDP. Перезапустите Steam вручную через SteamBooster." >&2
+  exit 1
+fi
+
+"$STEAM_BIN" "${STEAM_CDP_ARGS[@]}" "$@" &
+"$SYSTEMCTL_BIN" --user start steambooster-launcher.service

@@ -20,6 +20,7 @@ test('pickMainTarget ignores non-page Steam targets', () => {
 test('normalizeProbe keeps a stable boolean JSON contract', () => {
   assert.deepEqual(normalizeProbe({ steam: 1, main: 0, button: 'yes' }), {
     steam_available: true,
+    cdp_available: false,
     main_available: false,
     button_present: true,
   });

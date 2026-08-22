@@ -1,4 +1,5 @@
 import { pathToFileURL } from 'node:url';
+import { readdir, readFile } from 'node:fs/promises';
 
 
 export function pickMainTarget(targets) {
@@ -6,12 +7,31 @@ export function pickMainTarget(targets) {
 }
 
 
-export function normalizeProbe({ steam, main, button }) {
+export function normalizeProbe({ steam, cdp, main, button }) {
   return {
     steam_available: Boolean(steam),
+    cdp_available: Boolean(cdp),
     main_available: Boolean(main),
     button_present: Boolean(button),
   };
+}
+
+
+async function isSteamRunning() {
+  try {
+    const entries = await readdir('/proc');
+    for (const entry of entries) {
+      if (!/^\d+$/.test(entry)) continue;
+      try {
+        if ((await readFile(`/proc/${entry}/comm`, 'utf8')).trim() === 'steam') return true;
+      } catch {
+        // Process exited while /proc was being inspected.
+      }
+    }
+  } catch {
+    return false;
+  }
+  return false;
 }
 
 
@@ -49,20 +69,31 @@ async function evaluateButton(webSocketUrl, timeoutMs = 2500) {
 
 
 export async function probe(port = 8080) {
+  let targets;
   try {
     const response = await fetch(`http://127.0.0.1:${port}/json/list`, {
       signal: AbortSignal.timeout(2500),
     });
     if (!response.ok) throw new Error(`CDP returned ${response.status}`);
-    const targets = await response.json();
-    const mainTarget = pickMainTarget(targets);
-    if (!mainTarget?.webSocketDebuggerUrl) {
-      return normalizeProbe({ steam: true, main: false, button: false });
-    }
-    const button = await evaluateButton(mainTarget.webSocketDebuggerUrl);
-    return normalizeProbe({ steam: true, main: true, button });
+    targets = await response.json();
   } catch {
-    return normalizeProbe({ steam: false, main: false, button: false });
+    return normalizeProbe({
+      steam: await isSteamRunning(),
+      cdp: false,
+      main: false,
+      button: false,
+    });
+  }
+
+  const mainTarget = pickMainTarget(targets);
+  if (!mainTarget?.webSocketDebuggerUrl) {
+    return normalizeProbe({ steam: true, cdp: true, main: false, button: false });
+  }
+  try {
+    const button = await evaluateButton(mainTarget.webSocketDebuggerUrl);
+    return normalizeProbe({ steam: true, cdp: true, main: true, button });
+  } catch {
+    return normalizeProbe({ steam: true, cdp: true, main: true, button: false });
   }
 }
 
