@@ -3,6 +3,7 @@ node_modules/
 bun.lock
 bun.lockb
 .bun/
+.worktrees/
 
 # Build outputs
 dist/
