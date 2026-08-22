@@ -63,6 +63,7 @@ Exec={wrapper} %U
 Icon=steam
 Terminal=false
 Categories=Game;
+MimeType=x-scheme-handler/steam;x-scheme-handler/steamlink;
 Keywords=Steam;Booster;Games;
 Keywords[ru_RU]=Steam;Booster;Игры;Пополнить;
 StartupNotify=false
@@ -105,6 +106,27 @@ def _write(path: Path, content: str, mode: int = 0o644) -> None:
     path.chmod(mode)
 
 
+def _disable_legacy_steam_autostart(layout: InstallerLayout) -> None:
+    legacy = layout.config_home / "autostart" / "steam.desktop"
+    if not legacy.is_file():
+        return
+    lines = [
+        line
+        for line in legacy.read_text(encoding="utf-8").splitlines()
+        if not line.startswith("Hidden=")
+        and not line.startswith("X-GNOME-Autostart-enabled=")
+    ]
+    try:
+        desktop_header = lines.index("[Desktop Entry]")
+    except ValueError:
+        return
+    lines[desktop_header + 1:desktop_header + 1] = [
+        "Hidden=true",
+        "X-GNOME-Autostart-enabled=false",
+    ]
+    _write(legacy, "\n".join(lines) + "\n")
+
+
 def install_files(
     layout: InstallerLayout,
     workspace: Path,
@@ -136,9 +158,12 @@ def install_files(
         layout.data_home / "applications" / "steambooster.desktop",
         render_application_desktop(layout),
     )
+    _disable_legacy_steam_autostart(layout)
 
     runner(["systemctl", "--user", "daemon-reload"])
     runner(["systemctl", "--user", "enable", "--now", "steambooster-launcher.service"])
+    runner(["xdg-mime", "default", "steambooster.desktop", "x-scheme-handler/steam"])
+    runner(["xdg-mime", "default", "steambooster.desktop", "x-scheme-handler/steamlink"])
     desktop_refresh = shutil.which("kbuildsycoca6")
     if desktop_refresh:
         runner([desktop_refresh, "--noincremental"])

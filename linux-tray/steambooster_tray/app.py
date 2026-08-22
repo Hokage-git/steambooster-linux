@@ -44,6 +44,12 @@ def is_recoverable(snapshot: HealthSnapshot) -> bool:
     }
 
 
+def next_generation(previous: str | None, current: str | None) -> tuple[str | None, bool]:
+    if current is None:
+        return previous, False
+    return current, previous is not None and current != previous
+
+
 class ActionGate:
     def __init__(self) -> None:
         self._active = False
@@ -163,13 +169,12 @@ class TrayController(QObject):
             return
         self._set_state(result.state, result.detail)
         now = time.monotonic()
-        if (
-            result.generation is not None
-            and self.last_generation is not None
-            and result.generation != self.last_generation
-        ):
+        self.last_generation, generation_changed = next_generation(
+            self.last_generation,
+            result.generation,
+        )
+        if generation_changed:
             self.recovery_policy.reset(now)
-        self.last_generation = result.generation
         healthy_for_policy = not is_recoverable(result)
         decision = self.recovery_policy.observe(healthy_for_policy, now)
         if decision == RecoveryDecision.RESTART:

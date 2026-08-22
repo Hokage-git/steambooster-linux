@@ -3,7 +3,13 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from steambooster_tray.app import ActionGate, TrayPaths, is_recoverable, runtime_lock_path
+from steambooster_tray.app import (
+    ActionGate,
+    TrayPaths,
+    is_recoverable,
+    next_generation,
+    runtime_lock_path,
+)
 from steambooster_tray.model import HealthState, classify_health
 
 
@@ -47,6 +53,16 @@ class AppHelperTests(unittest.TestCase):
     def test_snapshot_preserves_main_generation(self):
         snapshot = classify_health(True, True, True, generation="main-2")
         self.assertEqual(snapshot.generation, "main-2")
+
+    def test_missing_main_does_not_forget_previous_generation(self):
+        retained, changed = next_generation("main-1", None)
+        self.assertEqual(retained, "main-1")
+        self.assertFalse(changed)
+
+    def test_new_non_null_main_generation_is_detected(self):
+        retained, changed = next_generation("main-1", "main-2")
+        self.assertEqual(retained, "main-2")
+        self.assertTrue(changed)
 
 
 if __name__ == "__main__":

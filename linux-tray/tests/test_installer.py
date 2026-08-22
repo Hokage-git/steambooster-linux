@@ -39,6 +39,7 @@ class InstallerTests(unittest.TestCase):
         self.assertIn("Name=SteamBooster", desktop)
         self.assertIn("Categories=Game;", desktop)
         self.assertIn(str(self.layout.bin_home / "steambooster-steam"), desktop)
+        self.assertIn("x-scheme-handler/steam", desktop)
 
     def test_service_uses_launcher_only_entrypoint(self):
         service = render_service(self.layout, self.workspace)
@@ -48,6 +49,9 @@ class InstallerTests(unittest.TestCase):
 
     def test_install_is_idempotent_and_registers_user_service(self):
         runner = FakeRunner()
+        legacy = self.layout.config_home / "autostart" / "steam.desktop"
+        legacy.parent.mkdir(parents=True)
+        legacy.write_text("[Desktop Entry]\nType=Application\nExec=/usr/bin/steam\n")
         install_files(self.layout, self.workspace, self.tray_root, runner)
         install_files(self.layout, self.workspace, self.tray_root, runner)
 
@@ -58,6 +62,11 @@ class InstallerTests(unittest.TestCase):
         self.assertTrue((self.layout.config_home / "autostart" / "steambooster-tray.desktop").is_file())
         self.assertIn(
             ("systemctl", "--user", "enable", "--now", "steambooster-launcher.service"),
+            runner.commands,
+        )
+        self.assertIn("Hidden=true", legacy.read_text())
+        self.assertIn(
+            ("xdg-mime", "default", "steambooster.desktop", "x-scheme-handler/steam"),
             runner.commands,
         )
 
