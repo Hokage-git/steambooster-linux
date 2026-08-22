@@ -14,6 +14,7 @@ class FakeRunner:
             "cdp_available": True,
             "main_available": True,
             "button_present": True,
+            "generation": "main-1",
         }
         self.calls = []
 
@@ -40,7 +41,9 @@ class SupervisorTests(unittest.TestCase):
 
     def test_health_uses_service_and_live_probe(self):
         supervisor = self.make_supervisor(FakeRunner())
-        self.assertEqual(supervisor.health().state, HealthState.HEALTHY)
+        snapshot = supervisor.health()
+        self.assertEqual(snapshot.state, HealthState.HEALTHY)
+        self.assertEqual(snapshot.generation, "main-1")
 
     def test_inactive_launcher_is_failed_even_if_probe_has_button(self):
         supervisor = self.make_supervisor(FakeRunner(service_active=False))

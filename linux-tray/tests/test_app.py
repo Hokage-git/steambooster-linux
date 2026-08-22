@@ -44,6 +44,10 @@ class AppHelperTests(unittest.TestCase):
         gate.leave()
         self.assertTrue(gate.enter())
 
+    def test_snapshot_preserves_main_generation(self):
+        snapshot = classify_health(True, True, True, generation="main-2")
+        self.assertEqual(snapshot.generation, "main-2")
+
 
 if __name__ == "__main__":
     unittest.main()

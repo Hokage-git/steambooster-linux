@@ -104,6 +104,7 @@ class TrayController(QObject):
         self.health_task_running = False
         self.action_gate = ActionGate()
         self.active_tasks: set[BackgroundTask] = set()
+        self.last_generation: str | None = None
 
         self.tray = QSystemTrayIcon(make_icon(HealthState.STEAM_UNAVAILABLE), self)
         self.tray.setToolTip("SteamBooster — проверка состояния")
@@ -161,8 +162,16 @@ class TrayController(QObject):
             self._health_failed("Некорректный результат проверки")
             return
         self._set_state(result.state, result.detail)
+        now = time.monotonic()
+        if (
+            result.generation is not None
+            and self.last_generation is not None
+            and result.generation != self.last_generation
+        ):
+            self.recovery_policy.reset(now)
+        self.last_generation = result.generation
         healthy_for_policy = not is_recoverable(result)
-        decision = self.recovery_policy.observe(healthy_for_policy, time.monotonic())
+        decision = self.recovery_policy.observe(healthy_for_policy, now)
         if decision == RecoveryDecision.RESTART:
             self._run_action(self.supervisor.restart_launcher, "Автовосстановление Booster…")
         elif decision == RecoveryDecision.EXHAUSTED:
@@ -207,9 +216,11 @@ class TrayController(QObject):
         )
 
     def restore_overlay(self) -> None:
+        self.recovery_policy.reset(time.monotonic())
         self._run_action(self.supervisor.restart_launcher, "Восстановление оверлея…")
 
     def restart_booster(self) -> None:
+        self.recovery_policy.reset(time.monotonic())
         self._run_action(self.supervisor.restart_launcher, "Перезапуск Booster…")
 
     def open_steam(self) -> None:

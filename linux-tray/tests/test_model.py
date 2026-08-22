@@ -72,7 +72,34 @@ class RecoveryPolicyTests(unittest.TestCase):
         self.assertEqual(policy.observe(False, now=2), RecoveryDecision.RESTART)
         self.assertEqual(policy.observe(False, now=3), RecoveryDecision.RESTART)
         self.assertEqual(policy.observe(False, now=4), RecoveryDecision.EXHAUSTED)
+        self.assertEqual(policy.observe(False, now=5), RecoveryDecision.EXHAUSTED)
         self.assertEqual(policy.observe(False, now=602), RecoveryDecision.RESTART)
+
+    def test_manual_reset_clears_exhausted_budget(self):
+        policy = RecoveryPolicy(
+            bad_samples_required=1,
+            max_restarts=1,
+            grace_seconds=0,
+            started_at=0,
+        )
+        self.assertEqual(policy.observe(False, now=1), RecoveryDecision.RESTART)
+        self.assertEqual(policy.observe(False, now=2), RecoveryDecision.EXHAUSTED)
+        policy.reset(now=3)
+        self.assertEqual(policy.observe(False, now=3), RecoveryDecision.RESTART)
+
+    def test_backoff_doubles_after_each_restart_up_to_bound(self):
+        policy = RecoveryPolicy(
+            bad_samples_required=1,
+            max_restarts=5,
+            grace_seconds=10,
+            max_backoff_seconds=120,
+            started_at=0,
+        )
+        self.assertEqual(policy.observe(False, now=10), RecoveryDecision.RESTART)
+        self.assertEqual(policy.observe(False, now=29), RecoveryDecision.NONE)
+        self.assertEqual(policy.observe(False, now=30), RecoveryDecision.RESTART)
+        self.assertEqual(policy.observe(False, now=69), RecoveryDecision.NONE)
+        self.assertEqual(policy.observe(False, now=70), RecoveryDecision.RESTART)
 
 
 if __name__ == "__main__":

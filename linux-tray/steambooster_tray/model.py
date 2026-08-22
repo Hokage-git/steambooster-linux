@@ -27,6 +27,7 @@ class HealthSnapshot:
     cdp_available: bool
     launcher_active: bool
     button_present: bool
+    generation: str | None = None
 
 
 def classify_health(
@@ -34,51 +35,57 @@ def classify_health(
     launcher_active: bool,
     button_present: bool,
     cdp_available: bool | None = None,
+    generation: str | None = None,
 ) -> HealthSnapshot:
     cdp_available = steam_available if cdp_available is None else cdp_available
     if not steam_available:
         return HealthSnapshot(
-            HealthState.STEAM_UNAVAILABLE,
-            "Steam недоступен",
-            False,
-            False,
-            launcher_active,
-            False,
+            state=HealthState.STEAM_UNAVAILABLE,
+            detail="Steam недоступен",
+            steam_available=False,
+            cdp_available=False,
+            launcher_active=launcher_active,
+            button_present=False,
+            generation=generation,
         )
     if not cdp_available:
         return HealthSnapshot(
-            HealthState.FAILED,
-            "CDP недоступен — запустите Steam через SteamBooster",
-            True,
-            False,
-            launcher_active,
-            False,
+            state=HealthState.FAILED,
+            detail="CDP недоступен — запустите Steam через SteamBooster",
+            steam_available=True,
+            cdp_available=False,
+            launcher_active=launcher_active,
+            button_present=False,
+            generation=generation,
         )
     if not launcher_active:
         return HealthSnapshot(
-            HealthState.FAILED,
-            "Лаунчер Booster не запущен",
-            True,
-            True,
-            False,
-            button_present,
+            state=HealthState.FAILED,
+            detail="Лаунчер Booster не запущен",
+            steam_available=True,
+            cdp_available=True,
+            launcher_active=False,
+            button_present=button_present,
+            generation=generation,
         )
     if not button_present:
         return HealthSnapshot(
-            HealthState.RECOVERING,
-            "Кнопка «Пополнить» не найдена",
-            True,
-            True,
-            True,
-            False,
+            state=HealthState.RECOVERING,
+            detail="Кнопка «Пополнить» не найдена",
+            steam_available=True,
+            cdp_available=True,
+            launcher_active=True,
+            button_present=False,
+            generation=generation,
         )
     return HealthSnapshot(
-        HealthState.HEALTHY,
-        "Booster работает",
-        True,
-        True,
-        True,
-        True,
+        state=HealthState.HEALTHY,
+        detail="Booster работает",
+        steam_available=True,
+        cdp_available=True,
+        launcher_active=True,
+        button_present=True,
+        generation=generation,
     )
 
 
@@ -90,34 +97,53 @@ class RecoveryPolicy:
         window_seconds: float = 600,
         grace_seconds: float = 30,
         started_at: float | None = None,
+        max_backoff_seconds: float = 120,
     ) -> None:
         self.bad_samples_required = bad_samples_required
         self.max_restarts = max_restarts
         self.window_seconds = window_seconds
         self.grace_seconds = grace_seconds
+        self.max_backoff_seconds = max_backoff_seconds
         self._grace_until = (time.monotonic() if started_at is None else started_at) + grace_seconds
         self._bad_samples = 0
         self._restarts: deque[float] = deque()
+        self._exhausted = False
+
+    def reset(self, now: float) -> None:
+        self._bad_samples = 0
+        self._restarts.clear()
+        self._exhausted = False
+        self._grace_until = now
 
     def observe(self, healthy: bool, now: float) -> RecoveryDecision:
         if healthy:
             self._bad_samples = 0
+            self._exhausted = False
             return RecoveryDecision.NONE
 
         if now < self._grace_until:
             self._bad_samples = 0
             return RecoveryDecision.NONE
 
+        while self._restarts and now - self._restarts[0] >= self.window_seconds:
+            self._restarts.popleft()
+        if self._exhausted and len(self._restarts) >= self.max_restarts:
+            return RecoveryDecision.EXHAUSTED
+        self._exhausted = False
+
         self._bad_samples += 1
         if self._bad_samples < self.bad_samples_required:
             return RecoveryDecision.NONE
 
         self._bad_samples = 0
-        while self._restarts and now - self._restarts[0] >= self.window_seconds:
-            self._restarts.popleft()
         if len(self._restarts) >= self.max_restarts:
+            self._exhausted = True
             return RecoveryDecision.EXHAUSTED
 
         self._restarts.append(now)
-        self._grace_until = now + self.grace_seconds
+        backoff = min(
+            self.grace_seconds * (2 ** len(self._restarts)),
+            self.max_backoff_seconds,
+        )
+        self._grace_until = now + backoff
         return RecoveryDecision.RESTART

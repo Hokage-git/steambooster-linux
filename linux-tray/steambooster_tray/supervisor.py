@@ -59,15 +59,16 @@ class BoosterSupervisor:
                 launcher_active,
                 bool(data.get("button_present")),
                 cdp_available=bool(data.get("cdp_available")),
+                generation=data.get("generation") if isinstance(data.get("generation"), str) else None,
             )
         except (json.JSONDecodeError, OSError, subprocess.SubprocessError, ValueError):
             return HealthSnapshot(
-                HealthState.FAILED,
-                "Проверка Booster завершилась ошибкой",
-                True,
-                False,
-                launcher_active,
-                False,
+                state=HealthState.FAILED,
+                detail="Проверка Booster завершилась ошибкой",
+                steam_available=True,
+                cdp_available=False,
+                launcher_active=launcher_active,
+                button_present=False,
             )
 
     def restart_launcher(self) -> None:

@@ -3,17 +3,26 @@ import { readdir, readFile } from 'node:fs/promises';
 
 
 export function pickMainTarget(targets) {
+  if (!Array.isArray(targets)) return undefined;
   return targets.find((target) => target?.type === 'page' && target?.title === 'Steam');
 }
 
 
-export function normalizeProbe({ steam, cdp, main, button }) {
+export function normalizeProbe({ steam, cdp, main, button, generation }) {
   return {
     steam_available: Boolean(steam),
     cdp_available: Boolean(cdp),
     main_available: Boolean(main),
     button_present: Boolean(button),
+    generation: typeof generation === 'string' ? generation : null,
   };
+}
+
+
+export function extractEvaluationValue(rawMessage) {
+  const message = JSON.parse(String(rawMessage));
+  if (message.id !== 1) return undefined;
+  return Boolean(message.result?.result?.value);
 }
 
 
@@ -54,11 +63,17 @@ async function evaluateButton(webSocketUrl, timeoutMs = 2500) {
       }));
     });
     socket.addEventListener('message', (event) => {
-      const message = JSON.parse(String(event.data));
-      if (message.id !== 1) return;
-      clearTimeout(timer);
-      socket.close();
-      resolve(Boolean(message.result?.result?.value));
+      try {
+        const value = extractEvaluationValue(event.data);
+        if (value === undefined) return;
+        clearTimeout(timer);
+        socket.close();
+        resolve(value);
+      } catch (error) {
+        clearTimeout(timer);
+        socket.close();
+        reject(error);
+      }
     });
     socket.addEventListener('error', () => {
       clearTimeout(timer);
@@ -91,9 +106,21 @@ export async function probe(port = 8080) {
   }
   try {
     const button = await evaluateButton(mainTarget.webSocketDebuggerUrl);
-    return normalizeProbe({ steam: true, cdp: true, main: true, button });
+    return normalizeProbe({
+      steam: true,
+      cdp: true,
+      main: true,
+      button,
+      generation: mainTarget.id,
+    });
   } catch {
-    return normalizeProbe({ steam: true, cdp: true, main: true, button: false });
+    return normalizeProbe({
+      steam: true,
+      cdp: true,
+      main: true,
+      button: false,
+      generation: mainTarget.id,
+    });
   }
 }
 
