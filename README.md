@@ -13,6 +13,10 @@ The ready-to-install archive is available on the GitHub Releases page. See [READ
 
 If the project is useful, stars, issue reports, reproducible logs with personal data removed, and pull requests are welcome.
 
+## License
+
+The original packaging, installer, and integration code in this repository is licensed under [GNU GPL version 3 only](LICENSE) (`GPL-3.0-only`).
+
 ## Third-party notices
 
-The bundled SteamBalance framework is distributed under the MIT License. Its mandatory upstream notice is included only with the release payload; see `THIRD_PARTY_NOTICES.md`.
+Bundled SteamBalance components retain their upstream MIT terms. Their mandatory notice is shipped separately in `LICENSES/SteamBalance-MIT.txt`; see `THIRD_PARTY_NOTICES.md`.

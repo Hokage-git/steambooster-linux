@@ -68,7 +68,7 @@ def build(source_root: Path, output_dir: Path, repo_root: Path) -> tuple[Path, P
     with tempfile.TemporaryDirectory(prefix="steambooster-release-", dir=output_dir) as temporary:
         package = Path(temporary) / PACKAGE_NAME
         package.mkdir()
-        for name, mode in (("install.sh", 0o755), ("uninstall.sh", 0o755), ("README_RU.md", 0o644), ("README.md", 0o644)):
+        for name, mode in (("install.sh", 0o755), ("uninstall.sh", 0o755), ("README_RU.md", 0o644), ("README.md", 0o644), ("LICENSE", 0o644)):
             copy_file(repo_root / name, package / name, mode)
         copy_file(repo_root / "scripts" / "render_install.py", package / "scripts" / "render_install.py", 0o755)
         copy_file(source_root / "booster-framework" / "LICENSE", package / "LICENSES" / "SteamBalance-MIT.txt")

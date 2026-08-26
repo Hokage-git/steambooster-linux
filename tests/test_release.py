@@ -63,6 +63,12 @@ class ReleaseBuilderTests(unittest.TestCase):
             names = bundle.namelist()
             self.assertIn("SteamBooster-Linux-x86_64/install.sh", names)
             self.assertIn("SteamBooster-Linux-x86_64/README_RU.md", names)
+            self.assertIn("SteamBooster-Linux-x86_64/LICENSE", names)
+            self.assertIn("SteamBooster-Linux-x86_64/LICENSES/SteamBalance-MIT.txt", names)
+            self.assertIn(
+                b"GNU GENERAL PUBLIC LICENSE",
+                bundle.read("SteamBooster-Linux-x86_64/LICENSE"),
+            )
             self.assertIn("SteamBooster-Linux-x86_64/payload/source/booster-framework/linux-launcher/dist/index.js", names)
             self.assertIn("SteamBooster-Linux-x86_64/payload/source/steambooster-plugins/packages/booster-checkout/out/booster-checkout.js", names)
             self.assertFalse(any("__pycache__" in name or name.endswith(".map") or "/tests/" in name for name in names))
