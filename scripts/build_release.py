@@ -20,6 +20,7 @@ FORBIDDEN = (LOCAL_HOME,)
 PAYLOAD_FILES = {
     "booster-framework/out/booster-framework.js": "source/booster-framework/out/booster-framework.js",
     "booster-framework/linux-launcher/dist/index.js": "source/booster-framework/linux-launcher/dist/index.js",
+    "booster-framework/linux-launcher/dist/catalog-link-bridge.js": "source/booster-framework/linux-launcher/dist/catalog-link-bridge.js",
     "booster-framework/linux-launcher/dist/handlers/config.js": "source/booster-framework/linux-launcher/dist/handlers/config.js",
     "booster-framework/linux-launcher/dist/handlers/index.js": "source/booster-framework/linux-launcher/dist/handlers/index.js",
     "booster-framework/linux-tray/run-tray.py": "source/booster-framework/linux-tray/run-tray.py",
