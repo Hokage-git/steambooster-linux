@@ -138,9 +138,10 @@ export async function installMain(ctx: PluginContext): Promise<() => void> {
   // Load order-uid history after ready — avoids blocking bootstrap
   // with a config-IPC call (overlap with refreshPaymentMethods preserved).
   try {
-    const raw = await ctx.configs?.read(ORDER_UIDS_KEY);
-    orderUids = sanitizeStoredUids(raw);
-  } catch { orderUids = []; }
+    orderUids = sanitizeStoredUids(await ctx.configs?.read(ORDER_UIDS_KEY));
+  } catch {
+    orderUids = [];
+  }
 
   // ── booster-addfunds.topup-requested cross-target subscriber ────────────────────────────
   // The store-target addfunds page publishes
@@ -293,6 +294,7 @@ export async function installMain(ctx: PluginContext): Promise<() => void> {
   // BrowserView throughout the session, never spawning extra popups. Defaults
   // for flagOpts produce STEAM_DROPDOWN_FLAGS = 4538634 (Steam Notifications-
   // matching native border / no taskbar / etc.).
+  console.log('[booster-checkout] attaching popup...');
   const popup = await sb.ui.attachPopup({
     id: POPUP_DROPDOWN,
     html: __SB_POPUP_HTML__,
@@ -313,6 +315,7 @@ export async function installMain(ctx: PluginContext): Promise<() => void> {
     composited: true,
     transparentParent: true,
   });
+  console.log('[booster-checkout] popup attached', popup ? 'ok' : 'null');
   popupRef = popup;
   topupPopupRef = popup;
   // Note: `popupReadyForTopup` does NOT flip here — it flips AFTER the
@@ -413,6 +416,7 @@ export async function installMain(ctx: PluginContext): Promise<() => void> {
         const reactTitle = login
           ? LL.checkout.popup.window_title({ login })
           : LL.checkout.popup.window_title_no_login();
+        ctx.log.info(`[booster-checkout] opening external window for payment, sb.ui=${typeof sb?.ui?.openExternalWindow}`);
         const handle = await sb.ui.openExternalWindow({
           id: WINDOW_PAYMENT,
           url,
@@ -702,9 +706,9 @@ export async function installMain(ctx: PluginContext): Promise<() => void> {
   // missing the expected anchor, framework rollback racing init, etc.)
   // does NOT prevent the bus-subscriber buffer from draining. Without
   // the button rect, openTopupWithAmount falls into the viewport-corner
-  // fallback — visually degraded but still functional. The throw is
-  // logged so a regression surfaces at log-review time. Code-review
+  // fallback — visually degraded but still functional. Code-review
   // I-4 from 2026-05-21.
+  console.log('[booster-checkout] adding header button...');
   try {
     topupButtonRef = sb.ui.addHeaderButton({
       id: 'booster-topup',
@@ -722,8 +726,9 @@ export async function installMain(ctx: PluginContext): Promise<() => void> {
       icon: __SB_HEADER_ICON_SVG__,
       togglePopup: popup,
     });
+    console.log('[booster-checkout] header button added', topupButtonRef ? 'ok' : 'null');
   } catch (e) {
-    console.error('[booster-checkout] addHeaderButton failed; topup buffer will drain via fallback position', e);
+    console.error('[booster-checkout] header button failed:', e);
     topupButtonRef = null;
   }
 

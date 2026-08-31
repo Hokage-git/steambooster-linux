@@ -26,16 +26,16 @@
 .booster-eo .booster-eo-now {                       /* 319:915; itemSpacing -4 → overlap */
   font-size: 12px; line-height: 16px; margin-top: -4px;
 }
-.booster-eo .booster-eo-buy {                       /* 319:919/920 */
-  display: inline-flex; align-items: center; gap: 10px;   /* button itemSpacing=10 */
+.booster-eo .booster-eo-buy {                       /* brand green action, like header top-up */
+  display: inline-flex; align-items: center; justify-content: center;
   background: #34a37b; color: #fff; border: 0; cursor: pointer;
-  border-radius: 2px; padding: 7px 16px; font-weight: 500; font-size: 14px;
-  line-height: 16px;
+  border-radius: 2px; padding: 6px 10px; font-weight: 700; font-size: 11px;
+  line-height: 16px; text-transform: uppercase; letter-spacing: .02em;
+  white-space: nowrap;
 }
-.booster-eo .booster-eo-buy:hover { filter: brightness(1.08); }
-.booster-eo .booster-eo-buy:disabled { cursor: default; filter: none; opacity: .6; }
+.booster-eo .booster-eo-buy:hover { background: #3eb487; }
+.booster-eo .booster-eo-buy:disabled { cursor: default; opacity: .6; }
 .booster-eo .booster-eo-buy--busy { opacity: .6; }
-.booster-eo .booster-eo-buy-icon { display: inline-flex; align-items: center; width: 14px; height: 12px; }
 
 /* Inactive item ("Скоро в продаже"): muted label, no buy button. */
 .booster-eo--inactive { padding: 7px 12px; }

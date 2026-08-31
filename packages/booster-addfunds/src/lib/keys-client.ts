@@ -64,6 +64,7 @@ export function createKeysClient(sb: SbApi, opts: {
   // belt-and-suspenders, not a normally-taken path.
   function requestKeys(appid: number, signal: AbortSignal): Promise<KeyItem[]> {
     const cfg = opts.keysConfig?.get();
+    console.log('[booster-addfunds] requestKeys', appid, 'paymentId?', !!cfg?.paymentId);
     if (cfg && cfg.paymentId) {
       // NOTE: sb.net doesn't wire AbortSignal in v1 (NetFetchInit.signal is a
       // no-op), so unlike the bus path this doesn't resolve early on abort —
@@ -74,9 +75,11 @@ export function createKeysClient(sb: SbApi, opts: {
       // re-broadcast) — acceptable: store country is account-bound/effectively
       // stable per session, and the actual charge is keyed by itemId, not region.
       return fetchDirect(sb, { appid, paymentId: cfg.paymentId, storeCountry: cfg.storeCountry }, signal)
-        .catch(() => requestKeysViaBus(appid, signal));
+        .then((items) => { console.log('[booster-addfunds] direct keys', appid, items.length); return items; })
+        .catch((e) => { console.log('[booster-addfunds] direct fetch failed, falling back to bus', e); return requestKeysViaBus(appid, signal); });
     }
-    return requestKeysViaBus(appid, signal);
+    return requestKeysViaBus(appid, signal)
+      .then((items) => { console.log('[booster-addfunds] bus keys', appid, items.length); return items; });
   }
 
   function requestKeysViaBus(appid: number, signal: AbortSignal): Promise<KeyItem[]> {

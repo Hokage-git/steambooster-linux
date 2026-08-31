@@ -7,7 +7,6 @@
 // keeps the dimmed «Купить» + «СКОРО» badge.
 import type { KeyItem } from '../lib/keys-api';
 import { fmtMoneyKeys } from '../lib/currency';
-import { SB_SWIRL_SVG } from '../lib/icons';
 import { LL } from '../i18n';
 import SB_EDITION_OFFER_CSS_RAW from './edition-offer-chip.css' with { type: 'text' };
 
@@ -85,10 +84,6 @@ export function buildEditionOfferChip(opts: EditionChipOptions): EditionChip {
     buy.type = 'button';
     buy.className = 'booster-eo-buy';
     buy.textContent = LL.addfunds.keys_buy_button();
-    const icon = document.createElement('span');
-    icon.className = 'booster-eo-buy-icon';
-    icon.innerHTML = SB_SWIRL_SVG;
-    buy.appendChild(icon);
     if (comingSoon) {
       // «СКОРО» badge lives inside the button so it positions relative to it
       // (centered on the top edge, protruding 50% up — CSS owns the geometry).
