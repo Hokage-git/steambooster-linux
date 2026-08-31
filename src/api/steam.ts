@@ -297,7 +297,18 @@ export function makeSteamApi(registry: Registry, bridge: Bridge, relaySecret?: s
         }, RELAY_TIMEOUT_MS);
         pending.set(requestId, {
           resolve: () => { clearTimeout(timer); resolve(); },
-          reject: (e: Error) => { clearTimeout(timer); reject(e); },
+          reject: (e: Error) => {
+            clearTimeout(timer);
+            // Linux fallback: the SharedJSContext relay has no
+            // MainWindowBrowserManager, so handleNavigate replies with
+            // 'MWBM unavailable'. Navigate the main shell directly via
+            // window.location.assign — this works from the main shell JS
+            // context and produces the same UX as the relay path.
+            if (e.message === 'MWBM unavailable' && typeof window !== 'undefined') {
+              try { window.location.assign(url); resolve(); return; } catch { /* fall through */ }
+            }
+            reject(e);
+          },
         });
         ch.post({ kind: 'navigate', requestId, url });
       });

@@ -16,7 +16,7 @@ import type {
 import { createExternalWindowApi } from './external-window';
 import type { Registry } from '../registry';
 import type { Bridge } from '../bridge';
-import { waitForToolbar } from '../steam-internals/header-selectors';
+import { findToolbar } from '../steam-internals/header-selectors';
 import { findStoreNav } from '../steam-internals/store-nav-selectors';
 import { findSuperNav } from '../steam-internals/supernav-selectors';
 import {
@@ -328,31 +328,13 @@ export function makeUiApi(registry: Registry, bridge: Bridge, relaySecret?: stri
       });
 
       let aborted = false;
-      const undoId = registry.push({
-        description: `headerButton:${opts.id}`,
-        undo: () => {
-          aborted = true;
-          if (tooltipUndo) tooltipUndo();
-          button.remove();
-        },
-      });
+      let observer: MutationObserver | null = null;
+      let observedToolbar: HTMLElement | null = null;
+      let warned = false;
+      let threwWarned = false;
+      const placement = opts.placement ?? 'before-profile';
 
-      void (async () => {
-        const toolbar = await waitForToolbar();
-        if (aborted) return;
-        if (!toolbar) {
-          bridge.notify('log', 'booster-framework', {
-            level: 'error',
-            msg: 'addHeaderButton: toolbar not found',
-            meta: {
-              feature: 'addHeaderButton',
-              id: opts.id,
-              reason: 'selector-not-found',
-            },
-          });
-          return;
-        }
-        const placement = opts.placement ?? 'before-profile';
+      const insert = (toolbar: HTMLElement): void => {
         // `before-profile` is the user-requested default: insert just
         // before the profile+balance widget. The toolbar layout we
         // observed is [voice, bell, profile, ..., chat] — bell is
@@ -361,6 +343,30 @@ export function makeUiApi(registry: Registry, bridge: Bridge, relaySecret?: stri
         // explicit ask ("после нотификаций и до профиля").
         const avatar = toolbar.querySelector('.avatarHolder');
         const profileFocusable = avatar?.closest('.Focusable');
+        const focusables = Array.from(toolbar.querySelectorAll(':scope > .Focusable'));
+        const beforeEl =
+          placement === 'before-profile' ? profileFocusable
+          : placement === 'before-notifications' ? toolbar.lastElementChild
+          : placement === 'after-profile' ? (profileFocusable?.nextSibling ?? null)
+          : null;
+        console.log('[sb-addHeaderButton] inserting', opts.id, 'placement=', placement, 'toolbarTag=', toolbar.tagName, 'toolbarClasses=', toolbar.className, 'childCount=', toolbar.childElementCount, 'focusables=', focusables.length, 'avatar=', !!avatar, 'profileFocusable=', !!profileFocusable, 'beforeEl=', beforeEl ? (beforeEl as Element).className : null);
+        bridge.notify?.('log', 'booster-framework', {
+          level: 'info',
+          msg: 'addHeaderButton: inserting',
+          meta: {
+            feature: 'addHeaderButton',
+            id: opts.id,
+            placement,
+            toolbarTag: toolbar.tagName,
+            toolbarClasses: toolbar.className,
+            toolbarChildCount: toolbar.childElementCount,
+            focusableCount: focusables.length,
+            avatarFound: !!avatar,
+            profileFocusableFound: !!profileFocusable,
+            beforeElTag: beforeEl && beforeEl instanceof Element ? beforeEl.tagName : null,
+            beforeElClasses: beforeEl && beforeEl instanceof Element ? (beforeEl as Element).className : null,
+          },
+        });
         if (placement === 'before-profile' && profileFocusable) {
           toolbar.insertBefore(button, profileFocusable);
         } else if (placement === 'before-notifications' && toolbar.lastElementChild) {
@@ -374,7 +380,151 @@ export function makeUiApi(registry: Registry, bridge: Bridge, relaySecret?: stri
         } else {
           toolbar.appendChild(button);
         }
-      })();
+        const rect = button.getBoundingClientRect();
+        const computed = window.getComputedStyle(button);
+        const inner = button.querySelector('.booster-toolbar-inner');
+        const innerComputed = inner ? window.getComputedStyle(inner) : null;
+        const styleEl = document.getElementById('__sb_toolbar_styles_v10');
+        const toolbarRect = toolbar.getBoundingClientRect();
+        const toolbarComputed = window.getComputedStyle(toolbar);
+        const toolbarParent = toolbar.parentElement;
+        const toolbarParentRect = toolbarParent ? toolbarParent.getBoundingClientRect() : new DOMRect();
+        const centerX = rect.x + rect.width / 2;
+        const centerY = rect.y + rect.height / 2;
+        const topElement = document.elementFromPoint(centerX, centerY);
+        const ancestorClip: Array<{ tag: string; classes: string; overflow: string; rect: string }> = [];
+        let ancestor: HTMLElement | null = button.parentElement;
+        while (ancestor && ancestor !== document.body) {
+          const cs = window.getComputedStyle(ancestor);
+          ancestorClip.push({
+            tag: ancestor.tagName,
+            classes: ancestor.className,
+            overflow: cs.overflow + '/' + cs.overflowX + '/' + cs.overflowY,
+            rect: (() => { const r = ancestor.getBoundingClientRect(); return 'x:' + r.x + ' y:' + r.y + ' w:' + r.width + ' h:' + r.height; })(),
+          });
+          if (ancestorClip.length >= 6) break;
+          ancestor = ancestor.parentElement;
+        }
+        console.log('[sb-addHeaderButton] inserted', opts.id,
+          'href=', window.location.href,
+          'title=', document.title,
+          'isConnected=', button.isConnected,
+          'parentTag=', button.parentElement?.tagName,
+          'parentClasses=', button.parentElement?.className,
+          'rect=', 'x:' + rect.x + ' y:' + rect.y + ' w:' + rect.width + ' h:' + rect.height,
+          'offset=', 'w:' + button.offsetWidth + ' h:' + button.offsetHeight,
+          'display=', computed.display,
+          'visibility=', computed.visibility,
+          'opacity=', computed.opacity,
+          'zIndex=', computed.zIndex,
+          'position=', computed.position,
+          'innerBg=', innerComputed?.backgroundColor,
+          'innerColor=', innerComputed?.color,
+          'innerDisplay=', innerComputed?.display,
+          'innerHTML=', button.innerHTML,
+          'styleEl=', !!styleEl,
+          'styleLen=', styleEl?.textContent?.length ?? 0,
+          'toolbarRect=', 'x:' + toolbarRect.x + ' y:' + toolbarRect.y + ' w:' + toolbarRect.width + ' h:' + toolbarRect.height,
+          'toolbarDisplay=', toolbarComputed.display,
+          'toolbarZIndex=', toolbarComputed.zIndex,
+          'toolbarPosition=', toolbarComputed.position,
+          'toolbarParentTag=', toolbarParent?.tagName,
+          'toolbarParentClasses=', toolbarParent?.className,
+          'toolbarParentRect=', 'x:' + toolbarParentRect.x + ' y:' + toolbarParentRect.y + ' w:' + toolbarParentRect.width + ' h:' + toolbarParentRect.height,
+          'elementFromPoint=', topElement === button ? 'self' : topElement ? (topElement as Element).tagName + '.' + (topElement as Element).className : 'null',
+          'ancestorClip=', JSON.stringify(ancestorClip));
+        bridge.notify?.('log', 'booster-framework', {
+          level: 'info',
+          msg: 'addHeaderButton: inserted',
+          meta: {
+            feature: 'addHeaderButton',
+            id: opts.id,
+            isConnected: button.isConnected,
+            parentTag: button.parentElement?.tagName,
+            parentClasses: button.parentElement?.className,
+            rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+            computedDisplay: window.getComputedStyle(button).display,
+            computedVisibility: window.getComputedStyle(button).visibility,
+            computedOpacity: window.getComputedStyle(button).opacity,
+          },
+        });
+      };
+
+      // Re-insert the header button whenever Steam re-renders the toolbar
+      // (e.g. navigating between Store and Library wipes and rebuilds the
+      // top bar). The observer catches the rebuild immediately; the interval
+      // is a safety net for cases where the toolbar is replaced outside a
+      // mutation we observe.
+      const reconcile = (force: boolean): void => {
+        if (aborted) return;
+        if (!force && button.isConnected && observedToolbar && observedToolbar.isConnected
+            && button.parentElement === observedToolbar) return;
+        const toolbar = findToolbar();
+        if (!toolbar) {
+          if (!warned) {
+            warned = true;
+            bridge.notify?.('log', 'booster-framework', {
+              level: 'error',
+              msg: 'addHeaderButton: toolbar not found',
+              meta: { feature: 'addHeaderButton', id: opts.id, reason: 'selector-not-found' },
+            });
+          }
+          return;
+        }
+        warned = false;
+        const sameToolbar = toolbar === observedToolbar;
+        const buttonInToolbar = toolbar.contains(button);
+        if (!sameToolbar || !buttonInToolbar) {
+          console.log('[sb-addHeaderButton] reconcile', opts.id, 'force=', force, 'buttonIsConnected=', button.isConnected, 'observedConnected=', observedToolbar?.isConnected ?? null, 'sameToolbar=', sameToolbar, 'buttonInToolbar=', buttonInToolbar, 'toolbarTag=', toolbar.tagName, 'toolbarClasses=', toolbar.className);
+          bridge.notify?.('log', 'booster-framework', {
+            level: 'info',
+            msg: 'addHeaderButton: reconcile',
+            meta: {
+              feature: 'addHeaderButton',
+              id: opts.id,
+              force,
+              buttonIsConnected: button.isConnected,
+              observedConnected: observedToolbar?.isConnected ?? null,
+              sameToolbar,
+              buttonInToolbar,
+              toolbarTag: toolbar.tagName,
+              toolbarClasses: toolbar.className,
+            },
+          });
+        }
+        observedToolbar = toolbar;
+        if (!buttonInToolbar) insert(toolbar);
+      };
+
+      const runReconcile = (force: boolean): void => {
+        try { reconcile(force); }
+        catch (e) {
+          if (!threwWarned) {
+            threwWarned = true;
+            bridge.notify?.('log', 'booster-framework', {
+              level: 'error',
+              msg: 'addHeaderButton: reconcile threw',
+              meta: { feature: 'addHeaderButton', id: opts.id, error: String(e) },
+            });
+          }
+        }
+      };
+
+      observer = new MutationObserver(() => runReconcile(false));
+      observer.observe(document.documentElement, { childList: true, subtree: true });
+      runReconcile(false);
+      const intervalId = setInterval(() => runReconcile(true), 800);
+
+      const teardown = (): void => {
+        aborted = true;
+        clearInterval(intervalId);
+        if (observer) { try { observer.disconnect(); } catch { /* */ } }
+        observer = null; observedToolbar = null;
+        if (tooltipUndo) tooltipUndo();
+        button.remove();
+      };
+
+      const undoId = registry.push({ description: `headerButton:${opts.id}`, undo: teardown });
 
       return {
         remove(): void {

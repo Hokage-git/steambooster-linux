@@ -35,6 +35,10 @@
   display: flex; align-items: center; height: 24px;
   cursor: pointer; user-select: none;
   -webkit-app-region: no-drag;
+  /* Ensure the button participates in its own stacking context so it is not
+   * painted behind sibling overlays in certain Steam views (Library/Main). */
+  position: relative;
+  z-index: 5;
 }
 [data-booster-btn] > .booster-toolbar-inner {
   display: flex; align-items: center; justify-content: center;

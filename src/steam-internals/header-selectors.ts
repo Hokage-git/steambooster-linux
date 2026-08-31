@@ -12,18 +12,49 @@ const FALLBACK_SELECTORS: ReadonlyArray<string> = [
   'header[role="banner"]',
 ] as const;
 
+let lastToolbarLog = '';
+
 export function findToolbar(): HTMLElement | null {
-  const avatar = document.querySelector(STRUCTURAL);
-  if (avatar) {
+  const avatars = Array.from(document.querySelectorAll(STRUCTURAL));
+  let best: { parent: HTMLElement; score: number } | null = null;
+  let any: HTMLElement | null = null;
+  for (const avatar of avatars) {
     const focusable = avatar.closest('.Focusable');
-    const parent = focusable?.parentElement;
-    if (parent && parent.querySelectorAll(':scope > .Focusable').length >= 3) {
-      return parent as HTMLElement;
+    const parent = focusable?.parentElement as HTMLElement | null | undefined;
+    const focusables = parent ? Array.from(parent.querySelectorAll(':scope > .Focusable')) : [];
+    const avatarRect = avatar.getBoundingClientRect();
+    const toolbarRect = parent ? parent.getBoundingClientRect() : new DOMRect();
+    const visible = avatarRect.width > 0 && avatarRect.height > 0 && toolbarRect.width > 0 && toolbarRect.height > 0;
+    const inTop = toolbarRect.y >= 0 && toolbarRect.y < 100;
+    const score = toolbarRect.y;
+    if (parent && focusables.length >= 3) {
+      if (!any) any = parent;
+      if (visible && inTop && (best === null || score < best.score)) {
+        best = { parent, score };
+      }
     }
   }
+  const result = best?.parent ?? any ?? null;
+  const logKey = result ? result.className : (avatars.length === 0 ? 'no-avatars' : 'no-toolbar');
+  if (logKey !== lastToolbarLog) {
+    lastToolbarLog = logKey;
+    if (best) {
+      console.log('[sb-findToolbar] picked best toolbar at y=', best.score, 'classes=', best.parent.className);
+    } else if (any) {
+      console.log('[sb-findToolbar] picked first available toolbar classes=', any.className);
+    } else if (avatars.length === 0) {
+      console.log('[sb-findToolbar] avatar not found');
+    } else {
+      console.log('[sb-findToolbar] no toolbar found');
+    }
+  }
+  if (result) return result;
   for (const sel of FALLBACK_SELECTORS) {
     const el = document.querySelector(sel) as HTMLElement | null;
-    if (el) return el;
+    if (el) {
+      console.log('[sb-findToolbar] fallback matched:', sel, 'tag:', el.tagName, 'classes:', el.className);
+      return el;
+    }
   }
   return null;
 }

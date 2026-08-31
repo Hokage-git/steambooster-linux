@@ -52,12 +52,21 @@ export function createRelayChannel(
   ctor?: new (channel: string) => BroadcastChannel,
 ): RelayChannel {
   const raw = new (ctor ?? _BroadcastChannel)(RELAY_CHANNEL);
+  // Track explicit close so post() stays safe during framework teardown /
+  // re-injection. Without this, async callers (e.g. sendInitEmail) that
+  // await a relay round-trip and then post a popup message can hit the
+  // synchronous "Channel is closed" DOMException and surface an unhandled
+  // rejection. Dropping the message after close is correct: the registry
+  // undo has already torn down the context that owned it.
+  let closed = false;
 
   function post(msg: object): void {
+    if (closed) return;
     raw.postMessage(secret !== undefined ? { ...msg, [RELAY_SECRET_FIELD]: secret } : msg);
   }
 
   function postUntagged(msg: object): void {
+    if (closed) return;
     raw.postMessage(msg);
   }
 
@@ -80,6 +89,8 @@ export function createRelayChannel(
   }
 
   function close(): void {
+    if (closed) return;
+    closed = true;
     raw.close();
   }
 

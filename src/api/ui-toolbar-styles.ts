@@ -13,7 +13,7 @@ import SB_TOOLBAR_CSS_RAW from './ui-toolbar-styles.css' with { type: 'text' };
 
 declare const __SB_TOOLBAR_CSS__: string | undefined;
 
-const SB_TOOLBAR_STYLE_ID = '__sb_toolbar_styles_v9';
+const SB_TOOLBAR_STYLE_ID = '__sb_toolbar_styles_v10';
 const SB_TOOLBAR_STYLE_PREFIX = '__sb_toolbar_styles_';
 const SB_TOOLBAR_CSS =
   typeof __SB_TOOLBAR_CSS__ !== 'undefined' ? __SB_TOOLBAR_CSS__ : SB_TOOLBAR_CSS_RAW;

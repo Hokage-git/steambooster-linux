@@ -122,6 +122,8 @@ export function __resetForTests(): void {
   inflightAccountSettings = null;
   inflightCountry = null;
   inflightLanguage = null;
+  pendingHandshake = false;
+  handshakeQueue.length = 0;
 }
 
 export function installUserChangeListener(scope: ScopeApi, bc: RelayPoster): void {
@@ -167,6 +169,12 @@ export function installUserChangeListener(scope: ScopeApi, bc: RelayPoster): voi
       }
       prevSnapshot = next;
       prevPersonaName = nextPersona;
+
+      // Wake any cold-start handshake waiters.
+      if (handshakeQueue.length > 0 && typeof next.strAccountName === 'string') {
+        const queue = handshakeQueue.splice(0);
+        for (const cb of queue) cb(next);
+      }
     });
   } catch (e) {
     nativeWarn('installUserChangeListener: register threw', { error: String(e) });
@@ -189,17 +197,57 @@ export function installUserChangeListener(scope: ScopeApi, bc: RelayPoster): voi
     inflightAccountSettings = null;
     inflightCountry = null;
     inflightLanguage = null;
+    // Abort any pending cold-start handshake waiter so a stale callback
+    // doesn't post to a closed BroadcastChannel after framework rollback.
+    pendingHandshake = false;
+    handshakeQueue.length = 0;
   }, { once: true });
 }
 
 /** Handle request-snapshot BC. Re-broadcasts the latest snapshot if any
- *  callback has fired; otherwise silent. Idempotent. */
+ *  callback has fired; otherwise waits for the first user-change callback
+ *  and then broadcasts it. Idempotent. */
 export function handleRequestSnapshot(bc: RelayPoster): void {
   const snap = buildSnapshotForHandshake();
   if (snap) {
     bc.postMessage({ kind: 'user-snapshot', snapshot: snap });
+    return;
   }
+  // Cold-start race: request-snapshot arrived before the first SteamClient
+  // user-change callback. Wait for one callback and re-post.
+  if (pendingHandshake) return;
+  pendingHandshake = true;
+  const off = onFirstUserChange((s) => {
+    pendingHandshake = false;
+    if (s.strAccountName) {
+      bc.postMessage({ kind: 'user-snapshot', snapshot: buildSnapshotPayload(s, readPersonaNameSync()) });
+    }
+  });
+  // Safety timeout so a stale handshake listener doesn't leak forever.
+  setTimeout(() => {
+    if (pendingHandshake) {
+      pendingHandshake = false;
+      off();
+    }
+  }, 10_000);
 }
+
+let pendingHandshake = false;
+const handshakeQueue: Array<(s: UserChangeSnapshot) => void> = [];
+
+function onFirstUserChange(cb: (s: UserChangeSnapshot) => void): () => void {
+  if (latestUserChange && typeof latestUserChange.strAccountName === 'string') {
+    cb(latestUserChange);
+    return () => {};
+  }
+  handshakeQueue.push(cb);
+  return () => {
+    const idx = handshakeQueue.indexOf(cb);
+    if (idx >= 0) handshakeQueue.splice(idx, 1);
+  };
+}
+
+
 
 async function fetchAccountSettings(): Promise<{ strEmail?: string; bEmailValidated?: boolean } | undefined> {
   if (inflightAccountSettings) return inflightAccountSettings.promise;

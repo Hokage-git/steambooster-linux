@@ -6,6 +6,7 @@ import { makeLifecycleApi } from './api/lifecycle';
 import { createScope } from './api/scope';
 import { makeConfigsApi } from './api/configs';
 import { makeContextApi, readContextKind } from './api/context';
+import { ContextKind } from './api/api-types';
 import { makePagesApi } from './api/pages';
 import { makeBusApi } from './api/bus';
 import { makeKeysApi } from './api/keys';
@@ -48,13 +49,6 @@ declare global {
 }
 
 (function bootstrap() {
-  // Detection: SharedJSContext targets expose MainWindowBrowserManager.
-  // The main shell has the toolbar DOM but no MWBM.
-  // (See validation log §Spike-4 — global availability table.)
-  const isSharedContext =
-    typeof (window as unknown as { MainWindowBrowserManager?: unknown }).MainWindowBrowserManager !==
-    'undefined';
-
   // Fresh AbortController-backed scope for THIS injection. Relay (SharedJSContext)
   // and full framework (MainShell) both use it. The OLD scope (if any) lives on
   // the OLD window.sb (MainShell) or in the OLD startRelay closure
@@ -122,15 +116,6 @@ declare global {
     }
   }
 
-  if (isSharedContext) {
-    // SharedJSContext: relay only, no window.sb.
-    // Read+delete _sec BEFORE startRelay so the relay can bind its bridge
-    // to the framework token (external-window / native ops attribution).
-    const sec = readAndConsumeSec();
-    startRelay(scope, sec);
-    return;
-  }
-
   // Read+delete _sec from __SB_PLUGINS_MANIFEST__ BEFORE createBridge and
   // before the plugin drain. The injector (A3) emits frameworkToken here.
   // Must run synchronously so plugin bundles (evaluated in later
@@ -138,10 +123,17 @@ declare global {
   const sec = readAndConsumeSec();
 
   // contextKind is sourced from the C++-injected prefix
-  // (__SB_PLUGINS_MANIFEST__.contextKind). Falls back to ContextKind.Main with
-  // a native-warn if missing/invalid (see readContextKind). Read before
-  // building the sb facade so context/pages all see the same kind.
+  // (__SB_PLUGINS_MANIFEST__.contextKind). It is the authoritative signal
+  // for whether we are in the SharedJSContext relay or the main shell.
+  // URL-based detection is unreliable on Linux because both contexts share
+  // the same steamloopback.host location.
   const contextKind = readContextKind();
+
+  if (contextKind === ContextKind.Shared) {
+    // SharedJSContext: relay only, no window.sb.
+    startRelay(scope, sec);
+    return;
+  }
 
   const registry = createRegistry();
   const bridge = createBridge(undefined, { resolverName: sec.resolverName });

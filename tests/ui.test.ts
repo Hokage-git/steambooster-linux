@@ -115,7 +115,7 @@ test('addHeaderButton wears Steam toolbar classes + injects styles once', async 
   // After length-1 assertion above, styles[0] is defined; non-null asserted
   // and cast through unknown because Element → HTMLElement isn't directly
   // assignable under tsc's narrowing rules.
-  expect((styles[0]! as unknown as HTMLElement).id).toBe('__sb_toolbar_styles_v9');
+  expect((styles[0]! as unknown as HTMLElement).id).toBe('__sb_toolbar_styles_v10');
 
   // Re-call addHeaderButton — style tag is still exactly one (idempotent).
   ui.addHeaderButton({ id: 'booster-cls-2', label: 'Other', onClick: () => {} });

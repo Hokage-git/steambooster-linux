@@ -375,17 +375,29 @@ export function startRelay(scope: ScopeApi, sec?: SecContext): () => void {
   // Wire external-window relay: subscribes to MWBM store changes and
   // handles open/setUrl/close/native-title BC messages from main shell.
   // MWBM is available only in SharedJSContext — this is the right place.
-  const mwbmStore = (window as any).MainWindowBrowserManager?.m_tabbedBrowserStore;
-  if (mwbmStore) {
+  // On Linux the m_tabbedBrowserStore slot may be null at bootstrap (the
+  // Steam UI constructs it slightly later), so poll until it is ready.
+  const mwbmRoot = (window as any).MainWindowBrowserManager;
+  let externalWindowRelaySetup = false;
+  let mwbmPollHandle: number | null = null;
+  function trySetupExternalWindowRelay(): void {
+    const mwbmStore = mwbmRoot?.m_tabbedBrowserStore;
+    if (externalWindowRelaySetup) return;
+    if (!mwbmStore || typeof mwbmStore.AddWebPageRequest !== 'function') return;
+    externalWindowRelaySetup = true;
+    if (mwbmPollHandle !== null) {
+      scope.clearInterval(mwbmPollHandle);
+      mwbmPollHandle = null;
+    }
     setupExternalWindowRelay({
       bcChannel: bc,
       mwbmStore,
       bridge: relayBridge,
       relaySecret,
     });
-  } else {
-    console.warn('[booster-relay] MWBM not available at bootstrap; external-window disabled');
   }
+  mwbmPollHandle = scope.setInterval(trySetupExternalWindowRelay, 250);
+  trySetupExternalWindowRelay();
 
   function showPopupNative(entry: PopupEntry, popupId: string, x: number, y: number): void {
     if (entry.visible) return;
