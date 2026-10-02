@@ -1,0 +1,123 @@
+//
+// Mirror the native injector's manifest-entry validation.
+// Adding a field here REQUIRES adding it there (and vice versa).
+
+// KNOWN_CAPS/KNOWN_KINDS are exported so the manifest emitter and the
+// approve-plugin CLI share a single source-of-truth.
+export type Capability =
+  | 'ui' | 'steam' | 'configs' | 'bus' | 'pages' | 'keys' | 'net';
+export const KNOWN_CAPS: readonly Capability[] = ['ui', 'steam', 'configs', 'bus', 'pages', 'keys', 'net'];
+
+// Mirror booster-framework/src/api/api-types.ts::ContextKind (4 values incl.
+// 'shared' for SharedJSContext relay) and the native injector's
+// context-kind validation.
+export type ContextKind = 'main' | 'shared' | 'tabbedBrowser' | 'web';
+export const KNOWN_KINDS: readonly ContextKind[] = ['main', 'shared', 'tabbedBrowser', 'web'];
+
+// Regex constants — exported for re-use in CLI validation (avoid
+// copy-paste of semver/id regexes).
+// 2-40 chars: starts with [a-z][a-z0-9], optional mid+end group [a-z0-9-]{1,38}[a-z0-9].
+// Mirrors the native injector's plugin-id regex.
+// No leading/trailing hyphens; second char must be alnum (not hyphen).
+export const PLUGIN_ID_REGEX = /^[a-z][a-z0-9](?:[a-z0-9-]{1,38}[a-z0-9])?$/;
+export const SEMVER_REGEX = /^\d+\.\d+\.\d+(?:-[a-z0-9.-]+)?$/;
+// Mirror the C++ kSubscribeTopicRe. Accepts lowercase dotted segments (a-z0-9.-)
+// up to 64 chars total, with an optional trailing .* glob suffix.
+export const SUBSCRIBE_TOPIC_RE = /^[a-z][a-z0-9.\-]{0,63}(\.\*)?$/;
+// A canonical hostname: labels of [a-z0-9-] separated by dots, no leading/
+// trailing dot or hyphen per label, at least two labels. No scheme/port/path.
+export const ALLOWED_HOST_RE = /^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)(\.([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?))+$/;
+
+export interface PluginMeta {
+  id: string;
+  version: string;
+  apiVersion: number;
+  contextKinds: readonly ContextKind[];
+  urlPatterns: readonly string[];
+  grantedCapabilities: readonly Capability[];
+  /** Foreign bus topics the plugin may subscribe to. Each entry is an exact
+   *  topic string or a `prefix.*` glob. Own-prefix is always allowed.
+   *  Optional — external plugins that don't need cross-plugin subscriptions
+   *  may omit it. */
+  subscribeTopics?: readonly string[];
+  /** Hostnames this plugin may reach via sb.net (native-proxied fetch).
+   *  Canonical: lowercase, ASCII, no scheme/port/path/userinfo/glob.
+   *  Optional — plugins without Capability.Net omit it. Mirrors the native
+   *  injector's manifest-entry validation (manifest_loader.cpp). */
+  allowedHosts?: readonly string[];
+}
+
+export type ValidationResult =
+  | { ok: true; meta: PluginMeta }
+  | { ok: false; error: string };
+
+export function validatePluginMeta(value: unknown): ValidationResult {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return { ok: false, error: 'plugin meta: expected object' };
+  }
+  const m = value as Record<string, unknown>;
+  if (typeof m.id !== 'string' || !PLUGIN_ID_REGEX.test(m.id)) {
+    return { ok: false, error: `plugin meta: invalid id: ${JSON.stringify(m.id)}` };
+  }
+  if (typeof m.version !== 'string' || !SEMVER_REGEX.test(m.version)) {
+    return { ok: false, error: `plugin meta: invalid version: ${JSON.stringify(m.version)}` };
+  }
+  if (typeof m.apiVersion !== 'number' || !Number.isInteger(m.apiVersion) || m.apiVersion < 1) {
+    return { ok: false, error: 'plugin meta: invalid apiVersion' };
+  }
+  if (!Array.isArray(m.contextKinds) || m.contextKinds.length === 0) {
+    return { ok: false, error: 'plugin meta: contextKinds must be non-empty array' };
+  }
+  for (const k of m.contextKinds) {
+    if (typeof k !== 'string' || !KNOWN_KINDS.includes(k as ContextKind)) {
+      return { ok: false, error: `plugin meta: unknown contextKind: ${JSON.stringify(k)}` };
+    }
+  }
+  if (!Array.isArray(m.urlPatterns)) {
+    return { ok: false, error: 'plugin meta: urlPatterns must be array' };
+  }
+  for (const p of m.urlPatterns) {
+    if (typeof p !== 'string') {
+      return { ok: false, error: 'plugin meta: urlPatterns entries must be strings' };
+    }
+  }
+  if (!Array.isArray(m.grantedCapabilities) || m.grantedCapabilities.length === 0) {
+    return { ok: false, error: 'plugin meta: grantedCapabilities must be non-empty array' };
+  }
+  for (const c of m.grantedCapabilities) {
+    if (typeof c !== 'string' || !KNOWN_CAPS.includes(c as Capability)) {
+      return { ok: false, error: `plugin meta: unknown capability: ${JSON.stringify(c)}` };
+    }
+  }
+  // subscribeTopics (optional; grammar mirrored from C++ kSubscribeTopicRe)
+  if (m.subscribeTopics !== undefined) {
+    if (!Array.isArray(m.subscribeTopics)) {
+      return { ok: false, error: 'plugin meta: subscribeTopics must be array' };
+    }
+    for (let i = 0; i < m.subscribeTopics.length; i++) {
+      const t = m.subscribeTopics[i];
+      if (typeof t !== 'string') {
+        return { ok: false, error: 'plugin meta: subscribeTopics entries must be strings' };
+      }
+      if (!SUBSCRIBE_TOPIC_RE.test(t)) {
+        return { ok: false, error: `subscribeTopics[${i}]: invalid topic format: ${t}` };
+      }
+    }
+  }
+  // allowedHosts (optional; canonical hostnames only)
+  if (m.allowedHosts !== undefined) {
+    if (!Array.isArray(m.allowedHosts)) {
+      return { ok: false, error: 'plugin meta: allowedHosts must be array' };
+    }
+    for (let i = 0; i < m.allowedHosts.length; i++) {
+      const h = m.allowedHosts[i];
+      if (typeof h !== 'string') {
+        return { ok: false, error: 'plugin meta: allowedHosts entries must be strings' };
+      }
+      if (!ALLOWED_HOST_RE.test(h)) {
+        return { ok: false, error: `allowedHosts[${i}]: invalid host: ${h}` };
+      }
+    }
+  }
+  return { ok: true, meta: m as unknown as PluginMeta };
+}

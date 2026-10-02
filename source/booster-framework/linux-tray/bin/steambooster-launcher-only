@@ -1,0 +1,21 @@
+#!/bin/bash
+set -euo pipefail
+
+NODE_BIN="${SB_NODE_BIN:-/usr/bin/node}"
+CURL_BIN="${SB_CURL_BIN:-/usr/bin/curl}"
+CDP_PORT="${SB_CDP_PORT:-8080}"
+SOURCE_ROOT="${SB_SOURCE_ROOT:-/home/maksimg/Документы/SteamBooster/source}"
+LAUNCHER_DIR="$SOURCE_ROOT/booster-framework/linux-launcher"
+CHECKOUT_PLUGIN="$SOURCE_ROOT/steambooster-plugins/packages/booster-checkout/out/booster-checkout-1.0.2.js"
+ADDFUNDS_PLUGIN="$SOURCE_ROOT/steambooster-plugins/packages/booster-addfunds/out/booster-addfunds-1.0.2.js"
+
+RATEACCOUNT_PLUGIN="$SOURCE_ROOT/steambooster-plugins/packages/booster-rateaccount/out/booster-rateaccount-1.0.0.js"
+
+# This service deliberately cannot start Steam. It waits for a CDP-enabled
+# Steam session created by the desktop/bootstrap wrapper.
+until "$CURL_BIN" -fsS "http://127.0.0.1:${CDP_PORT}/json/version" >/dev/null 2>&1; do
+  sleep 2
+done
+
+cd "$LAUNCHER_DIR"
+exec "$NODE_BIN" dist/index.js -w -p "$CDP_PORT" -d "$CHECKOUT_PLUGIN" -d "$ADDFUNDS_PLUGIN" -d "$RATEACCOUNT_PLUGIN"

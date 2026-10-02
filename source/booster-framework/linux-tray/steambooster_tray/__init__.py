@@ -1,0 +1,2 @@
+"""SteamBooster Linux tray supervisor."""
+
