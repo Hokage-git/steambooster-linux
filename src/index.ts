@@ -22,6 +22,7 @@ import { reportUserBinding } from './report-user-binding';
 import { prefetchSetupId } from './prefetch-setup-id';
 import { readAndConsumeSec } from './sec';
 import { collectRatePayload } from './rate-account';
+import { makeExternalPurchase } from './external-purchase';
 import type { SbApi } from './api/api-types';
 
 declare const __SB_FRAMEWORK_VERSION__: string;
@@ -241,6 +242,21 @@ declare global {
     });
   }
 
+  // Register the per-launch secret keys-purchase fn. The injector emits
+  // _sec.keysPurchase so the native host.purchaseKey handler can forward a
+  // catalogue purchase (itemId + optional gameName) to booster-checkout over
+  // sb.bus and await the result, without the minimal window.sb facade.
+  // Non-enumerable so it doesn't appear in Object.keys(window) scans.
+  if (sec.keysPurchase) {
+    const externalPurchase = makeExternalPurchase(api);
+    Object.defineProperty(window, sec.keysPurchase, {
+      value: (itemId: unknown, gameName?: unknown) => externalPurchase(itemId, gameName),
+      enumerable: false,
+      configurable: true,
+      writable: false,
+    });
+  }
+
   // Global error / unhandled-rejection forwarders. Routed through scope.listen
   // so they auto-detach on rollbackAll — without that, the OLD injection's
   // listener stays alive, sees a NEW injection's error, and tries to log it
@@ -291,7 +307,7 @@ declare global {
     }
   });
 
-  reportUserBinding(steam, fwBridge);
+  reportUserBinding(steam, fwBridge, scope.signal);
   prefetchSetupId(api.app, window as { __SB_BOOSTER_UUID__?: string });
 })();
 

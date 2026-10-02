@@ -73,11 +73,38 @@ describe('deriveCurrency: ISO-code disambiguation (dollar family)', () => {
   test('COL$ prefix, no suffix: "COL$ 1.000" → COP (symbol path)', () => {
     expect(deriveCurrency('COL$ 1.000')).toBe('COP');
   });
-  // Only the TRAILING code is authoritative — a symbol-only balance whose
-  // string does not end in a known ISO code stays on the symbol-strip path.
-  test('trailing-anchored: mid-string code does not override symbol', () => {
-    // Steam never emits this, but it pins the invariant: no positional override.
-    expect(deriveCurrency("CHF 1'234.56")).toBe('CHF');  // ends in digits → symbol path
+  // A known ISO code is honored in ANY position — some locales prefix it or
+  // don't end the string with it. CHF resolves the same either way.
+  test('prefix ISO code is honored: "CHF 1\'234.56" → CHF', () => {
+    expect(deriveCurrency("CHF 1'234.56")).toBe('CHF');
+  });
+
+  // Belarus wallets are USD; the client may format the balance in ways the
+  // trailing-only match missed (screenshot showed "$0.00 USD"). The comma
+  // variant, prefix code, and lowercase code must all resolve USD.
+  test('USD from comma-decimal / prefix / lowercase forms', () => {
+    expect(deriveCurrency('$0,00 USD')).toBe('USD');   // comma decimal locale
+    expect(deriveCurrency('USD 0,00')).toBe('USD');    // prefix code
+    expect(deriveCurrency('USD 5.00')).toBe('USD');
+    expect(deriveCurrency('$0.00 usd')).toBe('USD');   // lowercase
+    expect(deriveCurrency('5,00 Usd')).toBe('USD');    // mixed case
+  });
+
+  // A 3-letter ISO code GLUED to a longer letter run must NOT match — else a
+  // token like "USDT" would false-resolve USD. This is the regex's key safety
+  // property; lock it.
+  test('a code glued to a longer letter run does not match', () => {
+    expect(deriveCurrency('$1.00 USDT')).toBeUndefined();
+    expect(deriveCurrency('aUSDa')).toBeUndefined();
+    expect(deriveCurrency('XUSD')).toBeUndefined();
+  });
+
+  // Prefix-symbol currencies whose symbol IS their own 3-letter code now flow
+  // through the ISO path — verify each returns its own code (not a misfire).
+  test('prefix-symbol currencies resolve via the ISO path to their own code', () => {
+    expect(deriveCurrency('ARS$ 100')).toBe('ARS');
+    expect(deriveCurrency('SAR 100')).toBe('SAR');
+    expect(deriveCurrency('AED 10')).toBe('AED');
   });
 });
 

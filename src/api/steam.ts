@@ -1,9 +1,11 @@
-import type { SteamApi, SteamUser, MachineId, OwnedGamesResult, AppContext, InventoryResult } from './api-types';
+import type { SteamApi, SteamUser, MachineId, OwnedGamesResult, AppContext, InventoryResult, ParentalState } from './api-types';
 import type { Registry } from '../registry';
 import type { Bridge } from '../bridge';
 import { createRelayChannel } from '../relay/channel';
 import { deriveCurrency, parseBalanceNumber } from '../steam-internals/currency-map';
+import { currencyForStoreCountry } from '../steam-internals/country-to-currency';
 import { readCurrentSteamId64FromStoreGlobal, steamId64ToAccountId } from '../steam-internals/steam-id';
+import { DEFAULT_INVENTORY_APPS } from '../steam-internals/inventory';
 
 // Window.SteamClient shape is declared in relay/shared-context.ts (merged interface).
 
@@ -20,6 +22,17 @@ function getUserExtraTimeoutMs(): number {
   if (typeof process === 'undefined') return 5000;
   const env = Number(process.env['SB_USER_EXTRA_RELAY_TIMEOUT_MS']);
   return Number.isFinite(env) && env > 0 ? env : 5000;
+}
+
+/** Inventory needs its own, much larger budget: one call walks 5 partitions
+ *  SEQUENTIALLY, each paginating with get_descriptions over thousands of items.
+ *  The shared 5s budget expired mid-walk on exactly the accounts that have the
+ *  most to report, and the relay result — which does arrive — was discarded.
+ *  Stays under the native 40s CDP deadline on host.getRateAccountData. */
+export function getInventoryTimeoutMs(): number {
+  if (typeof process === 'undefined') return 25000;
+  const env = Number(process.env['SB_INVENTORY_RELAY_TIMEOUT_MS']);
+  return Number.isFinite(env) && env > 0 ? env : 25000;
 }
 
 // Bounded wait for the first user-snapshot when resolving steamId for
@@ -128,10 +141,10 @@ export function makeSteamApi(registry: Registry, bridge: Bridge, relaySecret?: s
   // {kind:okKind, requestId} reply, resolve pick(reply) or `fallback` on timeout.
   // Uses the userExtraNextRequestId id-space + a fresh self-removing listener
   // (NOT the openUrl `pending` map). Never rejects.
-  function callRelay<T>(reqKind: string, payload: object, okKind: string, pick: (m: any) => T, fallback: T): Promise<T> {
+  function callRelay<T>(reqKind: string, payload: object, okKind: string, pick: (m: any) => T, fallback: T, timeoutMs?: number): Promise<T> {
     return new Promise<T>((resolve) => {
       const requestId = userExtraNextRequestId++;
-      const timer = setTimeout(() => { off(); resolve(fallback); }, getUserExtraTimeoutMs());
+      const timer = setTimeout(() => { off(); resolve(fallback); }, timeoutMs ?? getUserExtraTimeoutMs());
       const off = ch.onMessage((data) => {
         const m = data as { kind?: string; requestId?: number } | undefined;
         if (m?.kind !== okKind || m?.requestId !== requestId) return;
@@ -160,9 +173,9 @@ export function makeSteamApi(registry: Registry, bridge: Bridge, relaySecret?: s
     return callRelay('get-machine-id', {}, 'machine-id-ok', (m) => m.value as MachineId | undefined, undefined);
   }
 
-  function makeSteamUserFromSnapshot(s: SnapshotPayload): SteamUser {
+  function makeSteamUserFromSnapshot(s: SnapshotPayload, currencyOverride?: string): SteamUser {
     const balanceFormatted = s.balanceFormatted;
-    const currency = balanceFormatted ? deriveCurrency(balanceFormatted) : undefined;
+    const currency = currencyOverride ?? (balanceFormatted ? deriveCurrency(balanceFormatted) : undefined);
     const balance  = balanceFormatted ? parseBalanceNumber(balanceFormatted) : undefined;
 
     // Inflight-dedupe for GetAccountSettings: a concurrent email() +
@@ -233,9 +246,11 @@ export function makeSteamApi(registry: Registry, bridge: Bridge, relaySecret?: s
       const snap = msg['snapshot'] as SnapshotPayload | undefined;
       if (!snap || typeof snap.accountName !== 'string') return;
       cachedUser = makeSteamUserFromSnapshot(snap);
-      for (const cb of userChangeListeners) {
-        try { cb(cachedUser); } catch { /* swallow */ }
-      }
+      const built = cachedUser;
+      notifyUserChange();
+      // Fill currency for zero-balance wallets from the store country, then
+      // re-fire (see healCurrencyFromCountry).
+      if (!cachedUser.currency) void healCurrencyFromCountry(snap, built);
       return;
     }
 
@@ -274,6 +289,49 @@ export function makeSteamApi(registry: Registry, bridge: Bridge, relaySecret?: s
       userChangeListeners.add(handler);
       const timer = setTimeout(() => finish(undefined), getStoreCountrySteamIdWaitMs());
     });
+  }
+
+  // Store-country read (native cache via bridge). Shared by getStoreCountry
+  // (polls for a steamId from a cold context) and the currency self-heal
+  // (passes the snapshot's steamId directly — no poll). Never throws.
+  async function fetchStoreCountry(steamIdOverride?: string): Promise<string | undefined> {
+    try {
+      if (!bridge) return undefined;
+      const steamId = steamIdOverride ?? await resolveCurrentSteamId();
+      if (!steamId) return undefined;
+      const r = await bridge.call<{ country: string | null }>('get_store_country', { steamId });
+      return typeof r?.country === 'string' ? r.country : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  // Notify all onUserChange subscribers of the current cachedUser.
+  function notifyUserChange(): void {
+    for (const cb of userChangeListeners) {
+      try { cb(cachedUser); } catch { /* swallow */ }
+    }
+  }
+
+  // Self-heal: a zero-balance wallet emits an empty balance string, so
+  // deriveCurrency yields undefined. Fall back to the store country's currency
+  // (single source of truth stays SteamUser.currency) and re-fire so every
+  // downstream consumer (log, rate-account, checkout popup + addfunds via the
+  // bus) corrects automatically. Reads store country by snap.steamId directly
+  // (the store-country native cache is keyed by steamId — no steamId, nothing
+  // to look up, so skip and avoid the resolveCurrentSteamId 3s poll). Guarded
+  // against the account-switch race and a newer funded snapshot arriving
+  // mid-await.
+  async function healCurrencyFromCountry(snap: SnapshotPayload, built: SteamUser): Promise<void> {
+    if (!snap.steamId) return;
+    const currency = currencyForStoreCountry(await fetchStoreCountry(snap.steamId));
+    if (!currency) return;
+    // Apply only if no newer snapshot has replaced the instance we healed from
+    // (covers account-switch AND a newer same-account snapshot) — reference
+    // identity subsumes the field-level guards.
+    if (cachedUser !== built) return;
+    cachedUser = makeSteamUserFromSnapshot(snap, currency);
+    notifyUserChange();
   }
 
   return {
@@ -328,35 +386,46 @@ export function makeSteamApi(registry: Registry, bridge: Bridge, relaySecret?: s
       return () => { userChangeListeners.delete(cb); };
     },
 
-    async getCurrentUserAsync(): Promise<SteamUser> {
+    async getCurrentUserAsync(timeoutMs?: number): Promise<SteamUser> {
       if (cachedUser) return cachedUser;
-      // Wait for the first non-null snapshot. The Promise is tracked in
-      // userAsyncPending so it can be rejected on framework rollback
-      // (instead of hanging forever).
+      // Wait for the first non-null snapshot, tracked in userAsyncPending so
+      // rollback can reject it. `timeoutMs` exists so callers don't race this
+      // externally: a race ABANDONS the loser without unregistering, leaving a
+      // handler that fires on every later snapshot for the session's life.
       return new Promise<SteamUser>((resolve, reject) => {
-        const handler = (u: SteamUser | null) => {
-          if (u !== null) {
-            userChangeListeners.delete(handler);
-            userAsyncPending.delete(entry);
-            resolve(u);
-          }
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const cleanup = (): void => {
+          userChangeListeners.delete(handler);
+          userAsyncPending.delete(entry);
+          if (timer !== undefined) clearTimeout(timer);
         };
-        const entry = { resolve, reject, handler };
+        const handler = (u: SteamUser | null) => {
+          if (u !== null) { cleanup(); resolve(u); }
+        };
+        const entry = { resolve, reject: (e: Error) => { cleanup(); reject(e); }, handler };
         userAsyncPending.add(entry);
         userChangeListeners.add(handler);
+        if (timeoutMs !== undefined && timeoutMs > 0) {
+          timer = setTimeout(() => {
+            cleanup();
+            reject(new Error(`user-wait-timeout: no Steam user snapshot within ${timeoutMs}ms`));
+          }, timeoutMs);
+        }
       });
     },
 
-    async getStoreCountry(): Promise<string | undefined> {
-      try {
-        if (!bridge) return undefined;
-        const steamId = await resolveCurrentSteamId();
-        if (!steamId) return undefined;
-        const r = await bridge.call<{ country: string | null }>('get_store_country', { steamId });
-        return typeof r?.country === 'string' ? r.country : undefined;
-      } catch {
-        return undefined;
-      }
+    getStoreCountry(): Promise<string | undefined> {
+      return fetchStoreCountry();
+    },
+
+    async getStoreCurrency(): Promise<string | undefined> {
+      // 1. Real wallet currency from the balance string (funded wallet; also the
+      //    value the snapshot self-heal fills in for returning users).
+      if (cachedUser?.currency) return cachedUser.currency;
+      // 2. Fallback from the store country, read LIVE each call — so it resolves
+      //    mid-session the moment a store visit has captured the country, even
+      //    when no new snapshot has re-fired the reactive self-heal (new users).
+      return currencyForStoreCountry(await fetchStoreCountry());
     },
 
     getMachineId(): Promise<MachineId | undefined> {
@@ -373,16 +442,34 @@ export function makeSteamApi(registry: Registry, bridge: Bridge, relaySecret?: s
       // Relay round-trip: the SharedJSContext handler calls fetchInventory over
       // the authenticated CM and posts back `inventory-ok`. Never rejects —
       // resolves the empty/partial default on timeout.
+      // Fallback mirrors the relay's per-app rows: a bare `perApp: []` reads as
+      // "no partitions requested" and hides that the walk timed out.
+      const apps = options?.apps ?? DEFAULT_INVENTORY_APPS;
       return callRelay('get-inventory',
         { options: options ?? {} },
         'inventory-ok', (m) => m.result as InventoryResult,
-        { items: [], perApp: [], partial: true });
+        { items: [],
+          perApp: apps.map((a) => ({ ...a, fetched: 0, ok: false, error: 'relay timeout' })),
+          partial: true },
+        getInventoryTimeoutMs());
     },
 
     getAccountLevel(): Promise<number | undefined> {
       const accountId = cachedUser?.accountId;
       return callRelay('get-account-level', { accountId }, 'account-level-ok',
         (m) => m.level as number | undefined, undefined);
+    },
+
+    getParentalState(): Promise<ParentalState | undefined> {
+      return callRelay('get-parental-state', {}, 'parental-state-ok',
+        (m) => m.state as ParentalState | undefined, undefined);
+    },
+
+    async getAvatarDataUrl(): Promise<string | null> {
+      const steamId = await resolveCurrentSteamId();
+      if (!steamId) return null;
+      return callRelay('get-avatar', { steamId }, 'avatar-ok',
+        (m) => (typeof m.dataUrl === 'string' ? m.dataUrl : null), null);
     },
   };
 }

@@ -196,13 +196,19 @@ manifest-записи плагина.
 `getStoreCountry(): Promise<string | undefined>` — страна магазина аккаунта
 (ISO 3166-1 alpha-2, напр. `'KZ'`; `undefined` до первого захвата или после
 смены аккаунта; никогда не throw),
+`getStoreCurrency(): Promise<string | undefined>` — валюта кошелька (ISO 4217,
+напр. `'USD'`). Каскад: валюта из строки баланса → фолбэк по стране магазина
+(нулевые кошельки USD-региона отдают пустой баланс); читает актуальный кэш при
+каждом вызове; `undefined` вне RU-региона при пустом балансе; никогда не throw'ит,
 `getMachineId(): Promise<MachineId | undefined>` — hardware-derived SHA1 triple
 `{bb3, ff2, b3b}` от Steam's `Auth.GetMachineID()`; `undefined` при недоступности;
 никогда не throw; значения не логируются. Подробнее —
 [`./steam-api.md`](./steam-api.md#getmachineid-promisemachineid--undefined),
 `getOwnedGames(options?): Promise<OwnedGamesResult>` — owned-game library из
 `collectionStore`, опционально обогащённый ценами из `StoreItemCache`; ban-safe,
-никогда не throw; `ready: false` если collectionStore ещё не был заполнен. Подробнее —
+никогда не throw; `ready: false` если collectionStore ещё не был заполнен.
+Игры, взятые по семейному доступу (Family Sharing), **исключаются** — их
+количество отдаётся в `familySharedExcluded`. Подробнее —
 [`./steam-api.md`](./steam-api.md#getownedgamesoptions-promiseownedgamesresult),
 `getInventory(options?): Promise<InventoryResult>` — собственный инвентарь
 пользователя (предметы + market hash names) через аутентифицированный CM
@@ -214,7 +220,20 @@ manifest-записи плагина.
 (XP/badge level). Добывается relay-side: сначала через CM
 (`Player.GetGameBadgeLevels`), затем miniprofile-fallback; никогда не throw;
 `undefined` при недоступности. Подробнее —
-[`./steam-api.md`](./steam-api.md#getaccountlevel-promisenumber--undefined).
+[`./steam-api.md`](./steam-api.md#getaccountlevel-promisenumber--undefined),
+`getParentalState(): Promise<ParentalState | undefined>` — состояние семейного
+просмотра Steam (Family View). `{everEnabled, locked}`; `locked: true` означает,
+что библиотека и инвентарь закрыты PIN-кодом и любые прочитанные из них данные
+недостоверны (как правило — пусты). `undefined` = состояние определить не
+удалось; это **не** «разблокировано». Никогда не throw.
+
+`getAvatarDataUrl(): Promise<string | null>` — аватар текущего пользователя как
+маленький JPEG data-URI (даунскейл ~128px), перекодированный relay-side из
+локального кэша аватаров; готов к прямому показу в `<img>`. `null` при
+недоступности; никогда не throw. Публичный CDN-URL аватара клиент надёжно не
+отдаёт (нет avatar-хэша), а loopback-путь недоступен из content-браузера —
+поэтому картинка пакуется в data-URI. Подробнее —
+[`./steam-api.md`](./steam-api.md#getavatardataurl-promisestring--null).
 
 `Capability.Ui` открывает `ctx.sb.ui`: `addHeaderButton`, `attachPopup`,
 `openWindow`, `openExternalWindow`, `addMenuItem` (пункт в верхней навигации
@@ -372,6 +391,12 @@ interface PluginContext {
 - **Чужие топики** — только если перечислены в поле `subscribeTopics`
   подписанной manifest-записи этого плагина. Нарушение → синхронный throw
   (аналогично `bus.publish` на чужой prefix).
+
+> **Доставка (local-echo).** `bus.publish` доставляет и подписчикам в
+> **том же контексте/сессии** (на микротаске), помимо остальных таргетов —
+> нативный fanout пропускает сессию-отправителя, поэтому два co-located
+> подписчика (напр. оба в Main) иначе не услышали бы друг друга. Подробнее —
+> `docs/bus-api.md`.
 
 `subscribeTopics` — необязательное поле в manifest-записи; по умолчанию
 `[]`. Каждый элемент — либо точный топик, либо глоб `prefix.*`:

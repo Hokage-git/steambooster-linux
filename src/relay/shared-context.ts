@@ -33,6 +33,9 @@ import { handleGetMachineId } from './machine-id';
 import { handleGetOwnedGames } from './owned-games';
 import { handleGetInventory } from './inventory';
 import { handleGetAccountLevel } from './account-level';
+import { handleGetParentalState } from './parental';
+import { handleGetAvatar } from './avatar';
+import { installTabMemoryGuard, uninstallTabMemoryGuard } from './tab-memory-guard';
 
 /** Splits a `createPluginUi`-prefixed popupId (`<pluginId>__<userId>`) into
  *  its owner and the user-facing key. Returns null for un-prefixed ids
@@ -335,6 +338,12 @@ export function startRelay(scope: ScopeApi, sec?: SecContext): () => void {
       case 'get-account-level':
         void handleGetAccountLevel(msg, poster);
         break;
+      case 'get-parental-state':
+        void handleGetParentalState(msg, poster);
+        break;
+      case 'get-avatar':
+        void handleGetAvatar(msg, poster);
+        break;
       case 'open-window':         winHandlers.handleOpenWindow(msg); break;
       case 'window-show':         winHandlers.handleShow(msg); break;
       case 'window-hide':         winHandlers.handleHide(msg); break;
@@ -398,6 +407,35 @@ export function startRelay(scope: ScopeApi, sec?: SecContext): () => void {
   }
   mwbmPollHandle = scope.setInterval(trySetupExternalWindowRelay, 250);
   trySetupExternalWindowRelay();
+
+  // Install the tab-memory guard as soon as MWBM is ready. handleNavigate also
+  // installs it (supernav path), but the store-nav catalog button navigates via
+  // location.assign in the store context — that never reaches the relay, so its
+  // tab clobber is only prevented if the guard is already in place. Poll until
+  // MWBM.GetTabForURL exists (it may lag bootstrap). Bounded; scope-cancelled.
+  (function installTabGuardWhenReady(): void {
+    const envN = (k: string, d: number): number => {
+      if (typeof process === 'undefined') return d;
+      const v = Number(process.env[k]);
+      return Number.isFinite(v) && v > 0 ? v : d;
+    };
+    const POLL_MS = envN('SB_TAB_GUARD_POLL_MS', 500);
+    const MAX_MS = envN('SB_TAB_GUARD_POLL_MAX_MS', 15000);
+    let waited = 0;
+    const tryOnce = (): boolean => {
+      const mwbm = (window as unknown as { MainWindowBrowserManager?: { GetTabForURL?: unknown } }).MainWindowBrowserManager;
+      if (mwbm && typeof mwbm.GetTabForURL === 'function') { installTabMemoryGuard(mwbm as never); return true; }
+      return false;
+    };
+    if (tryOnce()) return;
+    const tick = (): void => {
+      if (tryOnce()) return;
+      waited += POLL_MS;
+      if (waited >= MAX_MS) return;
+      scope.setTimeout(tick, POLL_MS);
+    };
+    scope.setTimeout(tick, POLL_MS);
+  })();
 
   function showPopupNative(entry: PopupEntry, popupId: string, x: number, y: number): void {
     if (entry.visible) return;
@@ -740,6 +778,10 @@ export function startRelay(scope: ScopeApi, sec?: SecContext): () => void {
       // the active view, so it does nothing when the main window is showing the
       // Library. Fall back to LoadURL on older clients. Mirrors the same fix in
       // relay/menu-items.ts.
+      // Stop our external page from hijacking Steam's per-tab nav memory (see
+      // tab-memory-guard). Covers the supernav path; the store-nav path
+      // (location.assign) is covered by the poll-install in startRelay.
+      installTabMemoryGuard(mwbm as never);
       if (mwbm.ShowURL) mwbm.ShowURL(msg.url);
       else mwbm.LoadURL(msg.url);
       post({ kind: 'navigate-done', requestId: msg.requestId });
@@ -794,6 +836,13 @@ export function startRelay(scope: ScopeApi, sec?: SecContext): () => void {
     // clears entries and bridge ref. Must run before bc.close() so any
     // final broadcasts (none expected on teardown) can still post.
     try { teardownExternalWindowRelay(); } catch { /* swallow */ }
+    // Unwrap our GetTabForURL so a hot-update reinstalls a fresh guard (the
+    // __sb_tab_guard flag lives on MWBM, which survives reinjection).
+    try {
+      uninstallTabMemoryGuard(
+        (window as unknown as { MainWindowBrowserManager?: never }).MainWindowBrowserManager,
+      );
+    } catch { /* swallow */ }
     bc.close();
     window.__sb_relay_started = false;
     if (window.__sb_relay_teardown === teardown) {

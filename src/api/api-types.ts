@@ -479,6 +479,18 @@ export interface OwnedGamesResult {
   readonly currency?: string;
   /** false if collectionStore wasn't populated in time. */
   readonly ready: boolean;
+  /** Games dropped because they are borrowed via Family Sharing (the copy
+   *  belongs to another account). 0 when the user is not in a family group. */
+  readonly familySharedExcluded?: number;
+}
+
+/** Steam Family View (parental controls) state. */
+export interface ParentalState {
+  /** Family View has been configured at some point on this account. */
+  readonly everEnabled: boolean;
+  /** Family View is ACTIVE — library/inventory are gated behind a PIN, so any
+   *  data read while this is true is unreliable (typically empty). */
+  readonly locked: boolean;
 }
 
 /** One (app, context) inventory partition, e.g. {appid: 730, contextid: '2'}.
@@ -541,10 +553,12 @@ export interface SteamApi {
 
   /** Returns user as soon as available. If cold-start (cache empty),
    *  awaits first snapshot. Never resolves if no snapshot ever arrives
-   *  (никогда не залогиненный Steam) — caller wraps в timeout если нужно.
+   *  (Steam that was never signed in). Pass `timeoutMs` to bound the wait: it
+   *  rejects with `user-wait-timeout` AND unregisters the pending listener.
+   *  Prefer it over racing this promise — a race abandons the loser registered.
    *  Rejects with Error('framework rolled back') if lifecycle.rollbackAll()
    *  runs while the Promise is pending. */
-  getCurrentUserAsync(): Promise<SteamUser>;
+  getCurrentUserAsync(timeoutMs?: number): Promise<SteamUser>;
 
   /** Subscribe to user-data updates. cb fires:
    *    - immediately if cachedUser != null (initial state)
@@ -561,6 +575,14 @@ export interface SteamApi {
    *    после смены аккаунта до повторного захвата, либо при сбое bridge.
    *  - Никогда не reject'ит. Gated под Capability.Steam (как весь sb.steam). */
   getStoreCountry(): Promise<string | undefined>;
+
+  /** Валюта кошелька (ISO 4217, напр. `'USD'`). Каскад: валюта из строки баланса
+   *  (если кошелёк пополнен) → фолбэк по стране магазина (`getStoreCountry`) для
+   *  нулевых кошельков. Читает актуальный кэш при каждом вызове — вызывай в точке
+   *  использования, чтобы поймать страну, захваченную уже после первого снапшота
+   *  (новый юзер, только что зашедший в Магазин). `undefined`, если ни то, ни
+   *  другое не определилось; никогда не throw'ит. Gated под Capability.Steam. */
+  getStoreCurrency(): Promise<string | undefined>;
 
   /** Hardware-derived machine identifier triple from Steam's Auth.GetMachineID().
    *  Returns {bb3, ff2, b3b} or undefined if unavailable. Never rejects.
@@ -586,6 +608,20 @@ export interface SteamApi {
    *  with a miniprofile fallback. Returns undefined if both paths are unavailable.
    *  Never rejects. Gated under Capability.Steam. */
   getAccountLevel(): Promise<number | undefined>;
+
+  /** Steam Family View (parental controls) state. `locked: true` means the
+   *  library and inventory stores are PIN-gated, so anything read from them is
+   *  unreliable. Returns undefined when the state cannot be determined — treat
+   *  that as UNKNOWN, not as unlocked. Never rejects. Gated under
+   *  Capability.Steam. */
+  getParentalState(): Promise<ParentalState | undefined>;
+  /** Current user's avatar as a small JPEG data URI (downscaled ~128px),
+   *  re-encoded relay-side from the local avatar cache. Returns null if
+   *  unavailable. Never rejects. Gated under Capability.Steam. Intended for the
+   *  account-valuation payload / direct `<img>` display: the public avatar CDN
+   *  URL isn't derivable client-side (no reliable avatar hash) and the loopback
+   *  avatarcache path isn't reachable from a content browser. */
+  getAvatarDataUrl(): Promise<string | null>;
 }
 
 /** One product granted by a successful key activation. */
@@ -763,16 +799,20 @@ export interface PagesApi {
 }
 
 export interface BusApi {
-  /** Broadcast `data` to all OTHER injected targets that subscribed to `topic`.
-   *  Sender (this target) does NOT receive its own publish (no self-loop).
+  /** Broadcast `data` to all OTHER injected targets that subscribed to `topic`,
+   *  AND (on a microtask, local-echo) to this same instance's own local
+   *  subscribers to `topic` — the native fanout skips the sender session, so
+   *  two subscribers co-located in the same target/session (e.g. Main) would
+   *  otherwise never hear each other.
    *  Sync throw on:
    *    - invalid topic (regex /^[a-z][a-z0-9.\-]{0,63}$/)
    *    - payload >16KB после JSON.stringify
    *    - data not JSON-serializable */
   publish(topic: string, data?: unknown): void;
 
-  /** Subscribe к topic. cb fires synchronously when broadcast arrives
-   *  from another target. Errors thrown by cb are caught and logged via
+  /** Subscribe к topic. cb fires synchronously when a broadcast arrives
+   *  from another target, and asynchronously (on a microtask) for a
+   *  same-instance publish via local-echo (see `publish`). Errors thrown by cb are caught and logged via
    *  `console.error` (do not propagate — a faulty subscriber must not
    *  starve other subscribers on the same topic). Returns unsubscribe.
    *  scope.abort drops all subs automatically.
