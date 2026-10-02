@@ -82,12 +82,13 @@ def render_launcher(layout: Layout, tools: dict[str, str]) -> str:
     framework = source / "booster-framework" / "out" / "booster-framework.js"
     checkout = source / "steambooster-plugins" / "packages" / "booster-checkout" / "out" / "booster-checkout.js"
     addfunds = source / "steambooster-plugins" / "packages" / "booster-addfunds" / "out" / "booster-addfunds.js"
+    rateaccount = source / "steambooster-plugins" / "packages" / "booster-rateaccount" / "out" / "booster-rateaccount.js"
     return f"""#!/usr/bin/env bash
 set -euo pipefail
 CDP_PORT="${{SB_CDP_PORT:-8080}}"
 until {shlex.quote(tools['curl'])} -fsS "http://127.0.0.1:${{CDP_PORT}}/json/version" >/dev/null 2>&1; do sleep 2; done
 cd {shlex.quote(str(launcher))}
-exec {shlex.quote(tools['node'])} dist/index.js -w -p "$CDP_PORT" -f {shlex.quote(str(framework))} -d {shlex.quote(str(checkout))} -d {shlex.quote(str(addfunds))}
+exec {shlex.quote(tools['node'])} dist/index.js -w -p "$CDP_PORT" -f {shlex.quote(str(framework))} -d {shlex.quote(str(checkout))} -d {shlex.quote(str(addfunds))} -d {shlex.quote(str(rateaccount))}
 """
 
 

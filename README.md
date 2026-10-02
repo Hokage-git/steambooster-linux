@@ -1,6 +1,6 @@
 # SteamBooster Linux
 
-Unofficial community Linux build of the open-source SteamBooster framework and its required plugins. It adds the SteamBalance top-up UI, supported game purchase offers, automatic recovery, and a desktop tray controller to the Linux Steam client.
+Unofficial community Linux build of the open-source SteamBooster framework and its required plugins. It adds the SteamBalance top-up UI, supported game purchase offers, the original catalog and account valuation flow, automatic recovery, and a desktop tray controller to the Linux Steam client.
 
 The ready-to-install archive is available on the GitHub Releases page. See [README_RU.md](README_RU.md) for complete installation and troubleshooting instructions.
 

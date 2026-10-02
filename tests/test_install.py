@@ -79,6 +79,7 @@ class PortableInstallTests(unittest.TestCase):
         launcher = self.home / ".local" / "bin" / "steambooster-launcher-only"
         self.assertTrue(launcher.stat().st_mode & 0o100)
         launcher_text = launcher.read_text(encoding="utf-8")
+        self.assertIn("booster-rateaccount/out/booster-rateaccount.js", launcher_text)
         self.assertIn(str(prefix / "source"), launcher_text)
         self.assertNotIn(str(Path.home()), launcher_text)
 

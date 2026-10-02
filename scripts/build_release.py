@@ -18,6 +18,13 @@ FORBIDDEN = (LOCAL_HOME,)
 
 
 PAYLOAD_FILES = {
+    "booster-framework/linux-launcher/dist/cdp-session.js": "source/booster-framework/linux-launcher/dist/cdp-session.js",
+    "booster-framework/linux-launcher/dist/website-bridge.js": "source/booster-framework/linux-launcher/dist/website-bridge.js",
+    "booster-framework/linux-launcher/dist/website-host.js": "source/booster-framework/linux-launcher/dist/website-host.js",
+    "booster-framework/linux-launcher/dist/host-dispatch.js": "source/booster-framework/linux-launcher/dist/host-dispatch.js",
+    "steambooster-plugins/packages/booster-rateaccount/out/booster-rateaccount-1.0.0.js": "source/steambooster-plugins/packages/booster-rateaccount/out/booster-rateaccount.js",
+    "steambooster-plugins/packages/booster-rateaccount/out/booster-rateaccount-1.0.0.meta.json": "source/steambooster-plugins/packages/booster-rateaccount/out/booster-rateaccount.meta.json",
+
     "booster-framework/out/booster-framework.js": "source/booster-framework/out/booster-framework.js",
     "booster-framework/linux-launcher/dist/index.js": "source/booster-framework/linux-launcher/dist/index.js",
     "booster-framework/linux-launcher/dist/catalog-link-bridge.js": "source/booster-framework/linux-launcher/dist/catalog-link-bridge.js",

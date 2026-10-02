@@ -19,6 +19,11 @@ class ReleaseBuilderTests(unittest.TestCase):
             "booster-framework/out/booster-framework.js",
             "booster-framework/linux-launcher/dist/index.js",
             "booster-framework/linux-launcher/dist/catalog-link-bridge.js",
+            "booster-framework/linux-launcher/dist/cdp-session.js",
+            "booster-framework/linux-launcher/dist/website-bridge.js",
+            "booster-framework/linux-launcher/dist/website-host.js",
+            "booster-framework/linux-launcher/dist/host-dispatch.js",
+
             "booster-framework/linux-launcher/dist/handlers/config.js",
             "booster-framework/linux-launcher/dist/handlers/index.js",
             "booster-framework/linux-tray/run-tray.py",
@@ -32,6 +37,8 @@ class ReleaseBuilderTests(unittest.TestCase):
             "steambooster-plugins/packages/booster-checkout/out/booster-checkout-1.0.2.meta.json",
             "steambooster-plugins/packages/booster-addfunds/out/booster-addfunds-1.0.2.js",
             "steambooster-plugins/packages/booster-addfunds/out/booster-addfunds-1.0.2.meta.json",
+            "steambooster-plugins/packages/booster-rateaccount/out/booster-rateaccount-1.0.0.js",
+            "steambooster-plugins/packages/booster-rateaccount/out/booster-rateaccount-1.0.0.meta.json",
         )
         for relative in self.required:
             path = self.source / relative
@@ -62,6 +69,8 @@ class ReleaseBuilderTests(unittest.TestCase):
         self.assertRegex((self.output / "SHA256SUMS").read_text(), r"^[0-9a-f]{64}  SteamBooster-Linux-x86_64\.zip\n$")
         with zipfile.ZipFile(archive) as bundle:
             names = bundle.namelist()
+            self.assertIn("SteamBooster-Linux-x86_64/payload/source/steambooster-plugins/packages/booster-rateaccount/out/booster-rateaccount.js", names)
+            self.assertIn("SteamBooster-Linux-x86_64/payload/source/booster-framework/linux-launcher/dist/website-host.js", names)
             self.assertIn("SteamBooster-Linux-x86_64/install.sh", names)
             self.assertIn("SteamBooster-Linux-x86_64/README_RU.md", names)
             self.assertIn("SteamBooster-Linux-x86_64/LICENSE", names)
