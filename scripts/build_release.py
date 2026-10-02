@@ -30,10 +30,10 @@ PAYLOAD_FILES = {
     "booster-framework/linux-tray/steambooster_tray/model.py": "source/booster-framework/linux-tray/steambooster_tray/model.py",
     "booster-framework/linux-tray/steambooster_tray/presentation.py": "source/booster-framework/linux-tray/steambooster_tray/presentation.py",
     "booster-framework/linux-tray/steambooster_tray/supervisor.py": "source/booster-framework/linux-tray/steambooster_tray/supervisor.py",
-    "steambooster-plugins/packages/booster-checkout/out/booster-checkout-0.0.12.js": "source/steambooster-plugins/packages/booster-checkout/out/booster-checkout.js",
-    "steambooster-plugins/packages/booster-checkout/out/booster-checkout-0.0.12.meta.json": "source/steambooster-plugins/packages/booster-checkout/out/booster-checkout.meta.json",
-    "steambooster-plugins/packages/booster-addfunds/out/booster-addfunds-0.0.9.js": "source/steambooster-plugins/packages/booster-addfunds/out/booster-addfunds.js",
-    "steambooster-plugins/packages/booster-addfunds/out/booster-addfunds-0.0.9.meta.json": "source/steambooster-plugins/packages/booster-addfunds/out/booster-addfunds.meta.json",
+    "steambooster-plugins/packages/booster-checkout/out/booster-checkout-1.0.2.js": "source/steambooster-plugins/packages/booster-checkout/out/booster-checkout.js",
+    "steambooster-plugins/packages/booster-checkout/out/booster-checkout-1.0.2.meta.json": "source/steambooster-plugins/packages/booster-checkout/out/booster-checkout.meta.json",
+    "steambooster-plugins/packages/booster-addfunds/out/booster-addfunds-1.0.2.js": "source/steambooster-plugins/packages/booster-addfunds/out/booster-addfunds.js",
+    "steambooster-plugins/packages/booster-addfunds/out/booster-addfunds-1.0.2.meta.json": "source/steambooster-plugins/packages/booster-addfunds/out/booster-addfunds.meta.json",
 }
 
 

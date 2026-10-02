@@ -18,6 +18,7 @@ class ReleaseBuilderTests(unittest.TestCase):
         self.required = (
             "booster-framework/out/booster-framework.js",
             "booster-framework/linux-launcher/dist/index.js",
+            "booster-framework/linux-launcher/dist/catalog-link-bridge.js",
             "booster-framework/linux-launcher/dist/handlers/config.js",
             "booster-framework/linux-launcher/dist/handlers/index.js",
             "booster-framework/linux-tray/run-tray.py",
@@ -27,10 +28,10 @@ class ReleaseBuilderTests(unittest.TestCase):
             "booster-framework/linux-tray/steambooster_tray/model.py",
             "booster-framework/linux-tray/steambooster_tray/presentation.py",
             "booster-framework/linux-tray/steambooster_tray/supervisor.py",
-            "steambooster-plugins/packages/booster-checkout/out/booster-checkout-0.0.12.js",
-            "steambooster-plugins/packages/booster-checkout/out/booster-checkout-0.0.12.meta.json",
-            "steambooster-plugins/packages/booster-addfunds/out/booster-addfunds-0.0.9.js",
-            "steambooster-plugins/packages/booster-addfunds/out/booster-addfunds-0.0.9.meta.json",
+            "steambooster-plugins/packages/booster-checkout/out/booster-checkout-1.0.2.js",
+            "steambooster-plugins/packages/booster-checkout/out/booster-checkout-1.0.2.meta.json",
+            "steambooster-plugins/packages/booster-addfunds/out/booster-addfunds-1.0.2.js",
+            "steambooster-plugins/packages/booster-addfunds/out/booster-addfunds-1.0.2.meta.json",
         )
         for relative in self.required:
             path = self.source / relative
