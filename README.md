@@ -20,3 +20,24 @@ The original packaging, installer, and integration code in this repository is li
 ## Third-party notices
 
 Bundled SteamBalance components retain their upstream MIT terms. Their mandatory notice is shipped separately in `LICENSES/SteamBalance-MIT.txt`; see `THIRD_PARTY_NOTICES.md`.
+
+## Source layout and build
+
+The `main` branch contains the complete Linux adaptation:
+
+- `source/booster-framework/`: upstream framework and Linux launcher/tray.
+- `source/steambooster-plugins/`: checkout, game offers and account valuation plugins.
+- `scripts/`: portable package builder and installer.
+
+Build from the repository root with Bun 1.3.14+, Node.js 22+ and Python 3.11+:
+
+```bash
+(cd source/booster-framework && bun install && bun run build)
+(cd source/booster-framework/linux-launcher && bun install && bun run build)
+(cd source/steambooster-plugins && bun install && bun run build)
+python scripts/build_release.py --source-root source --output-dir docs/artifacts/release
+```
+
+The output directory contains the installable ZIP and `SHA256SUMS`. See
+[README_RU.md](README_RU.md) for installation. Upstream component licenses are
+retained inside their source directories; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

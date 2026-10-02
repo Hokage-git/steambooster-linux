@@ -5,3 +5,5 @@ __pycache__/
 dist/
 SteamBooster-Linux-x86_64.zip
 SHA256SUMS
+
+/docs/artifacts/
