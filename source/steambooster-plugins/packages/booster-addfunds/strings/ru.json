@@ -1,0 +1,32 @@
+{
+  "addfunds": {
+    "row_label":            "Пополнение баланса",
+    "submit_button":        "Пополнить",
+    "row_aria_label":       "Пополнить баланс через SteamBalance",
+    "cart_heading":         "Вам не хватает баланса",
+    "keys_block_title":     "У нас игра доступна для вашего региона:",
+    "keys_buy_button":      "Купить",
+    "keys_row_label":       "Купить {gameName:string}",
+    "keys_block_aria_label":"Доступные ключи для покупки в вашем регионе",
+    "edition_offer_aria_label": "Предложение SteamBalance — купить дешевле",
+    "edition_offer_soon_badge": "СКОРО",
+    "keys_item_coming_soon":      "Скоро в продаже",
+    "keys_purchase_error":        "Не удалось оформить заказ. Попробуйте ещё раз.",
+    "keys_purchase_window_taskbar_title": "Покупка ключа",
+    "keys_purchase_window_title":         "Покупка ключа — «{gameName:string}»",
+    "keys_email_modal_title":     "Куда отправить ключ?",
+    "keys_email_modal_hint":      "Укажите email — на него придёт ключ после оплаты.",
+    "keys_email_modal_placeholder":"you@example.com",
+    "keys_email_modal_confirm":   "Продолжить",
+    "keys_email_modal_cancel":    "Отмена",
+    "keys_email_modal_invalid":   "Введите корректный email",
+    "keys_error_modal_title":     "Упс!",
+    "keys_error_modal_close":     "Закрыть",
+    "catalog_menu_item":          "Каталог игр",
+    "region_games_title":         "Игры недоступные в регионе",
+    "region_games_aria_label":    "Игры недоступные в регионе"
+  },
+  "general": {
+    "product_display_name": "SteamBooster"
+  }
+}

@@ -1,0 +1,22 @@
+// Business-facing URLs owned by this plugin. Per project convention plugins
+// hardcode their own URLs here; framework code never hardcodes URLs.
+
+/** SteamBalance games catalog, opened in the main Steam window from the
+ *  catalog item injected into Steam's store supernav dropdown (main context,
+ *  main/install.ts). */
+export const STORE_MENU_CATALOG_URL = 'https://steambalance.cc/c/e6c5';
+
+/** SteamBalance games catalog, opened from the persistent catalog button in the
+ *  Steam store page top-nav bar (page context, pages/catalog-nav.ts). */
+export const STORE_NAV_CATALOG_URL = 'https://steambalance.cc/c/a3bd';
+
+/** Backend endpoint for the region-games carousel, fetched via sb.net. */
+export const CATALOGUE_API = 'https://steambalance.cc/api/booster/catalogue';
+
+/** Promo link opened when the region-games carousel background is clicked. */
+export const REGION_GAMES_PROMO_URL = 'https://steambalance.cc/c/5533';
+
+/** Steam-keys list endpoint, fetched directly via sb.net once checkout has
+ *  broadcast paymentId + storeCountry (see lib/keys-config.ts). Same
+ *  endpoint booster-checkout's main-shell fetches for the bus fallback. */
+export const STEAM_KEYS_API = 'https://steambalance.cc/api/services/steam_keys';

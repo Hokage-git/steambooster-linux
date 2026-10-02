@@ -1,0 +1,40 @@
+// AUTO-GENERATED from strings/ru.json — DO NOT EDIT.
+// Contents: addfunds.* and general.* subsets only.
+
+import type { BaseTranslation } from 'typesafe-i18n';
+
+const ru = {
+  addfunds: {
+    cart_heading: 'Вам не хватает баланса',
+    catalog_menu_item: 'Каталог игр',
+    edition_offer_aria_label: 'Предложение SteamBalance — купить дешевле',
+    edition_offer_soon_badge: 'СКОРО',
+    keys_block_aria_label: 'Доступные ключи для покупки в вашем регионе',
+    keys_block_title: 'У нас игра доступна для вашего региона:',
+    keys_buy_button: 'Купить',
+    keys_email_modal_cancel: 'Отмена',
+    keys_email_modal_confirm: 'Продолжить',
+    keys_email_modal_hint: 'Укажите email — на него придёт ключ после оплаты.',
+    keys_email_modal_invalid: 'Введите корректный email',
+    keys_email_modal_placeholder: 'you@example.com',
+    keys_email_modal_title: 'Куда отправить ключ?',
+    keys_error_modal_close: 'Закрыть',
+    keys_error_modal_title: 'Упс!',
+    keys_item_coming_soon: 'Скоро в продаже',
+    keys_purchase_error: 'Не удалось оформить заказ. Попробуйте ещё раз.',
+    keys_purchase_window_taskbar_title: 'Покупка ключа',
+    keys_purchase_window_title: 'Покупка ключа — «{gameName:string}»',
+    keys_row_label: 'Купить {gameName:string}',
+    region_games_aria_label: 'Игры недоступные в регионе',
+    region_games_title: 'Игры недоступные в регионе',
+    row_aria_label: 'Пополнить баланс через SteamBalance',
+    row_label: 'Пополнение баланса',
+    submit_button: 'Пополнить',
+  },
+  general: {
+    product_display_name: 'SteamBooster',
+  },
+} as const satisfies BaseTranslation;
+
+export default ru;
+export type AddfundsTranslation = typeof ru;

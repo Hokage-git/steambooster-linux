@@ -1,0 +1,10 @@
+{
+  "rateaccount": {
+    "supernav": {
+      "button_label": "Оцени аккаунт"
+    }
+  },
+  "general": {
+    "product_display_name": "SteamBooster"
+  }
+}

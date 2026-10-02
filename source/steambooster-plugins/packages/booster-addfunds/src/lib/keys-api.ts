@@ -1,0 +1,37 @@
+// Canonical keys data shape shared across addfunds UI. The wire fetch lives in
+// booster-checkout (main-shell) by default — see spec "Hard architectural
+// constraint"; addfunds receives KeyItem[] over sb.bus (see lib/keys-client.ts).
+// checkout duplicates this shape in its own bundle — separate IIFEs can't share
+// a type by import. addfunds ALSO fetches this shape directly via sb.net when
+// checkout has broadcast a paymentId (see lib/keys-fetch.ts) — toKeyItem below
+// is the parser for that direct path, itself a duplicate of checkout's own
+// main/keys-fetch.ts::toKeyItem (same backend response shape).
+export interface KeyItem {
+  itemId: number;
+  name: string;
+  isActive: boolean;
+  regionLabel: string;
+  packageId: number | null;
+  productType: string | null;
+  price: number;        // ₽, float
+  oldPrice: number | null;
+  discountPercent: number;
+}
+
+export function toKeyItem(raw: unknown): KeyItem | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Record<string, unknown>;
+  if (typeof r.id !== 'number' || typeof r.price !== 'number') return null;
+  const pkg = (r.package && typeof r.package === 'object') ? r.package as Record<string, unknown> : null;
+  return {
+    itemId: r.id,
+    name: typeof r.name === 'string' ? r.name : '',
+    isActive: r.is_active === true,
+    regionLabel: typeof r.region_label === 'string' ? r.region_label : '',
+    packageId: pkg && typeof pkg.id === 'number' ? pkg.id : null,
+    productType: pkg && typeof pkg.product_type === 'string' ? pkg.product_type : null,
+    price: r.price,
+    oldPrice: typeof r.old_price === 'number' ? r.old_price : null,
+    discountPercent: typeof r.discount_percent === 'number' ? r.discount_percent : 0,
+  };
+}
