@@ -19,6 +19,8 @@ export const CATALOG_LINK_BRIDGE_SCRIPT = `
         event.ctrlKey || event.shiftKey || event.altKey) return;
     var node = event.target;
     if (!(node instanceof Element)) return;
+    // The official catalogue handles purchase buttons through purchaseKey.
+    if (node.closest('button, [role=button]')) return;
     var anchor = node.closest('a[href]');
     if (!anchor) return;
     var href;

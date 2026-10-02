@@ -2,6 +2,7 @@ import { test, expect, beforeEach, afterEach } from 'bun:test';
 import { Window } from 'happy-dom';
 
 let win: Window;
+const registries: {rollbackAll():void}[] = [];
 
 // afterEach restores the captured originals — happy-dom's MutationObserver
 // otherwise leaks for the rest of the bun worker and poisons later test files
@@ -23,6 +24,7 @@ beforeEach(() => {
   globalThis.MutationObserver = win.MutationObserver;
 });
 afterEach(() => {
+  for (const reg of registries.splice(0)) reg.rollbackAll();
   // @ts-expect-error
   globalThis.window = _origWindow;
   // @ts-expect-error
@@ -51,6 +53,7 @@ test('addHeaderButton inserts before notifications via avatarHolder walk-up', as
   const { createRegistry } = await import('../src/registry');
   const { makeUiApi } = await import('../src/api/ui');
   const reg = createRegistry();
+  registries.push(reg);
   const ui = makeUiApi(reg, { call: async () => ({}) } as never);
 
   ui.addHeaderButton({
@@ -92,6 +95,7 @@ test('addHeaderButton wears Steam toolbar classes + injects styles once', async 
   const { createRegistry } = await import('../src/registry');
   const { makeUiApi } = await import('../src/api/ui');
   const reg = createRegistry();
+  registries.push(reg);
   const ui = makeUiApi(reg, { call: async () => ({}) } as never);
 
   ui.addHeaderButton({ id: 'booster-cls', label: 'Пополнить', onClick: () => {} });
@@ -144,6 +148,7 @@ test('setEnabled toggles aria-disabled, tabindex, and pointer-events together', 
   const { createRegistry } = await import('../src/registry');
   const { makeUiApi } = await import('../src/api/ui');
   const reg = createRegistry();
+  registries.push(reg);
   const ui = makeUiApi(reg, { call: async () => ({}) } as never);
 
   const handle = ui.addHeaderButton({ id: 'booster-en', label: 'X', onClick: () => {} });
@@ -185,6 +190,7 @@ test('addHeaderButton handle.remove() detaches the button', async () => {
   const { createRegistry } = await import('../src/registry');
   const { makeUiApi } = await import('../src/api/ui');
   const reg = createRegistry();
+  registries.push(reg);
   const ui = makeUiApi(reg, { call: async () => ({}) } as never);
 
   const handle = ui.addHeaderButton({ id: 'booster-rm', label: 'X', onClick: () => {} });
@@ -201,6 +207,7 @@ test('addHeaderButton aborts insert when registry rolls back during waitForToolb
   const { createRegistry } = await import('../src/registry');
   const { makeUiApi } = await import('../src/api/ui');
   const reg = createRegistry();
+  registries.push(reg);
   const ui = makeUiApi(reg, { call: async () => ({}) } as never);
 
   // Toolbar not yet in DOM: waitForToolbar will wait on the MutationObserver.
@@ -237,6 +244,7 @@ test('attachPopup posts attach-popup BC and resolves on popup-attached', async (
   const { makeUiApi } = await import('../src/api/ui');
 
   const reg = createRegistry();
+  registries.push(reg);
   const ui = makeUiApi(reg, { call: async () => ({}) } as never);
 
   const fakeRelay = new BroadcastChannel(RELAY_CHANNEL);
@@ -324,6 +332,7 @@ test('attachPopup rejects invalid id', async () => {
   const { makeUiApi } = await import('../src/api/ui');
 
   const reg = createRegistry();
+  registries.push(reg);
   const ui = makeUiApi(reg, { call: async () => ({}) } as never);
 
   await expect(ui.attachPopup({
@@ -337,6 +346,7 @@ test('addMenuItem posts add-menu-item, resolves on menu-item-added, remove posts
   const { makeUiApi } = await import('../src/api/ui');
 
   const reg = createRegistry();
+  registries.push(reg);
   const ui = makeUiApi(reg, { call: async () => ({}) } as never);
 
   const fakeRelay = new BroadcastChannel(RELAY_CHANNEL);
@@ -433,6 +443,7 @@ test("placement 'before-profile' inserts button immediately before the profile f
   const { createRegistry } = await import('../src/registry');
   const { makeUiApi } = await import('../src/api/ui');
   const reg = createRegistry();
+  registries.push(reg);
   const ui = makeUiApi(reg, { call: async () => ({}) } as never);
 
   ui.addHeaderButton({
@@ -460,6 +471,7 @@ test("placement 'after-profile' inserts button immediately after the profile foc
   const { createRegistry } = await import('../src/registry');
   const { makeUiApi } = await import('../src/api/ui');
   const reg = createRegistry();
+  registries.push(reg);
   const ui = makeUiApi(reg, { call: async () => ({}) } as never);
 
   ui.addHeaderButton({
@@ -501,6 +513,7 @@ test("placement 'after-profile' falls back to appendChild when profileFocusable 
   const { createRegistry } = await import('../src/registry');
   const { makeUiApi } = await import('../src/api/ui');
   const reg = createRegistry();
+  registries.push(reg);
   const ui = makeUiApi(reg, { call: async () => ({}) } as never);
 
   ui.addHeaderButton({
@@ -539,6 +552,7 @@ test("placement 'before-profile' falls through to appendChild when no profileFoc
   const { createRegistry } = await import('../src/registry');
   const { makeUiApi } = await import('../src/api/ui');
   const reg = createRegistry();
+  registries.push(reg);
   const ui = makeUiApi(reg, { call: async () => ({}) } as never);
 
   ui.addHeaderButton({
@@ -566,6 +580,7 @@ test('invalid placement string falls through to appendChild (not to before-profi
   const { createRegistry } = await import('../src/registry');
   const { makeUiApi } = await import('../src/api/ui');
   const reg = createRegistry();
+  registries.push(reg);
   const ui = makeUiApi(reg, { call: async () => ({}) } as never);
 
   ui.addHeaderButton({
@@ -606,6 +621,7 @@ test("placement 'before-notifications' with no toolbar children falls back to ap
   const { createRegistry } = await import('../src/registry');
   const { makeUiApi } = await import('../src/api/ui');
   const reg = createRegistry();
+  registries.push(reg);
   const ui = makeUiApi(reg, { call: async () => ({}) } as never);
 
   ui.addHeaderButton({
@@ -642,6 +658,7 @@ test('addHeaderButton setLabel updates visible text', async () => {
   const { createRegistry } = await import('../src/registry');
   const { makeUiApi } = await import('../src/api/ui');
   const reg = createRegistry();
+  registries.push(reg);
   const ui = makeUiApi(reg, { call: async () => ({}) } as never);
 
   const handle = ui.addHeaderButton({ id: 'booster-lbl', label: 'one', onClick: () => {} });

@@ -1,11 +1,21 @@
 #!/usr/bin/env node
+import { MasterCDPSession } from './cdp-session.js';
+import { randomBytes } from 'node:crypto';
+import { WebsiteHost } from './website-host.js';
 import { spawn, type ChildProcess } from 'node:child_process';
-import { CATALOG_LINK_BRIDGE_SCRIPT } from './catalog-link-bridge.js';
 import { readFileSync, existsSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { get } from 'node:http';
 import { handleNativeOp } from './handlers/index.js';
+
+const hostSecrets = Object.fromEntries(
+  ['rateAccountData', 'keysPurchase', 'keysActivate', 'hostAccount'].map((k) => [
+    k,
+    '__sb_' + randomBytes(16).toString('hex'),
+  ]),
+);
+let mainHostContext: { session: MasterCDPSession; sessionId: string } | undefined;
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -29,7 +39,8 @@ function parseArgs(argv: string[]): LauncherArgs {
   const args: LauncherArgs = {
     steamPath: process.env.SB_STEAM_PATH ?? findSteamExecutable(),
     cdpPort: Number(process.env.SB_CDP_PORT ?? 8080),
-    frameworkPath: process.env.SB_FRAMEWORK_PATH ?? resolve(__dirname, '../../out/booster-framework.js'),
+    frameworkPath:
+      process.env.SB_FRAMEWORK_PATH ?? resolve(__dirname, '../../out/booster-framework.js'),
     devPlugins: [],
     waitForSteam: false,
   };
@@ -92,7 +103,9 @@ function httpGetJson<T>(url: string): Promise<T> {
   return new Promise((resolve, reject) => {
     const req = get(url, { family: 4 }, (res) => {
       let data = '';
-      res.on('data', (chunk) => { data += chunk; });
+      res.on('data', (chunk) => {
+        data += chunk;
+      });
       res.on('end', () => {
         if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
           try {
@@ -106,7 +119,9 @@ function httpGetJson<T>(url: string): Promise<T> {
       });
     });
     req.on('error', reject);
-    req.setTimeout(5_000, () => { req.destroy(new Error('timeout')); });
+    req.setTimeout(5_000, () => {
+      req.destroy(new Error('timeout'));
+    });
   });
 }
 
@@ -118,7 +133,9 @@ async function waitForCDP(port: number, timeoutMs = 60_000): Promise<void> {
       console.log(`[linux-launcher] CDP /json/version responded`);
       return;
     } catch (e) {
-      console.log(`[linux-launcher] CDP probe error: ${e instanceof Error ? e.message : String(e)}`);
+      console.log(
+        `[linux-launcher] CDP probe error: ${e instanceof Error ? e.message : String(e)}`,
+      );
     }
     await sleep(250);
   }
@@ -132,7 +149,9 @@ async function listTargets(port: number, timeoutMs = 60_000): Promise<CDPTarget[
       const list = await httpGetJson<CDPTarget[]>(`http://127.0.0.1:${port}/json/list`);
       if (list.length > 0) return list;
     } catch (e) {
-      console.log(`[linux-launcher] listTargets error: ${e instanceof Error ? e.message : String(e)}`);
+      console.log(
+        `[linux-launcher] listTargets error: ${e instanceof Error ? e.message : String(e)}`,
+      );
     }
     await sleep(500);
   }
@@ -144,14 +163,19 @@ function pickSteamMainTarget(targets: CDPTarget[]): CDPTarget | undefined {
   // createflags. On Linux its webSocketDebuggerUrl actually routes to the
   // SharedJSContext renderer, so we must attach via Target.attachToTarget
   // (flattened) to reach the main shell's own JS execution context.
-  return targets.find((t) =>
-    t.title === 'Steam' &&
-    (t.url.startsWith('about:blank') || t.url.startsWith('https://store.steampowered.com')),
-  ) ?? targets.find((t) => t.title === 'Steam');
+  return (
+    targets.find(
+      (t) =>
+        t.title === 'Steam' &&
+        (t.url.startsWith('about:blank') || t.url.startsWith('https://store.steampowered.com')),
+    ) ?? targets.find((t) => t.title === 'Steam')
+  );
 }
 
 function pickSharedContextTarget(targets: CDPTarget[]): CDPTarget | undefined {
-  return targets.find((t) => t.title === 'SharedJSContext' || t.url.includes('IN_STEAMUI_SHARED_CONTEXT=true'));
+  return targets.find(
+    (t) => t.title === 'SharedJSContext' || t.url.includes('IN_STEAMUI_SHARED_CONTEXT=true'),
+  );
 }
 
 interface ManifestEntry {
@@ -187,13 +211,18 @@ function readPluginMeta(path: string): Partial<ManifestEntry> | undefined {
   }
 }
 
-function buildManifest(args: LauncherArgs, contextKind: string, plugins: ManifestEntry[]): PluginsManifest {
+function buildManifest(
+  args: LauncherArgs,
+  contextKind: string,
+  plugins: ManifestEntry[],
+): PluginsManifest {
   return {
     injectorVersion: 'linux-dev-0.0.1',
     contextKind,
     userDisabledPlugins: [],
     plugins,
     _sec: {
+      ...hostSecrets,
       frameworkToken: 'linux-framework-token',
       resolverName: '__sb_resolve',
       busDispatchName: '__sb_bus_dispatch',
@@ -212,7 +241,15 @@ function buildPluginEntries(devPlugins: string[]): ManifestEntry[] {
       version: meta?.version ?? '0.0.1',
       apiVersion: meta?.apiVersion ?? 1,
       contextKinds: meta?.contextKinds ?? ['main'],
-      grantedCapabilities: meta?.grantedCapabilities ?? ['ui', 'steam', 'configs', 'bus', 'pages', 'keys', 'net'],
+      grantedCapabilities: meta?.grantedCapabilities ?? [
+        'ui',
+        'steam',
+        'configs',
+        'bus',
+        'pages',
+        'keys',
+        'net',
+      ],
       subscribeTopics: meta?.subscribeTopics,
       allowedHosts: meta?.allowedHosts,
       urlPatterns: meta?.urlPatterns,
@@ -302,81 +339,22 @@ function buildBootstrapPrefix(manifest: PluginsManifest): string {
  * renderer; attaching via Target.attachToTarget is the only way to reach the
  * main shell's own JS context.
  */
-class MasterCDPSession {
-  private ws: WebSocket;
-  private pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: unknown) => void }>();
-  private id = 0;
-  private openPromise: Promise<void>;
 
-  constructor(url: string) {
-    this.ws = new WebSocket(url);
-    this.openPromise = new Promise((resolve, reject) => {
-      this.ws.onopen = () => resolve();
-      this.ws.onerror = (err) => reject(err);
-    });
-    this.ws.onmessage = (event) => this.handleMessage(event.data as string);
-    this.ws.onclose = () => {
-      for (const p of this.pending.values()) {
-        p.reject(new Error('CDP session closed'));
-      }
-      this.pending.clear();
-    };
-  }
-
-  async ready(): Promise<void> {
-    await this.openPromise;
-  }
-
-  private handleMessage(data: string): void {
-    const msg = JSON.parse(data);
-    if (msg.method === 'Runtime.consoleAPICalled') {
-      const params = msg.params as { type?: string; args?: { value?: unknown }[] };
-      const text = params.args?.map((a) => (typeof a.value === 'string' ? a.value : JSON.stringify(a.value))).join(' ') ?? '';
-      const tag = msg.sessionId ? `[steam-console:${params.type ?? 'log'}:${msg.sessionId.slice(0, 8)}]` : `[steam-console:${params.type ?? 'log'}]`;
-      console.log(tag, text);
-      return;
-    }
-    if (msg.method === 'Runtime.exceptionThrown') {
-      const details = (msg.params as { exceptionDetails?: { text?: string; exception?: { description?: string } } }).exceptionDetails;
-      const tag = msg.sessionId ? `[steam-exception:${msg.sessionId.slice(0, 8)}]` : '[steam-exception]';
-      console.error(tag, details?.text, details?.exception?.description ?? '');
-      return;
-    }
-    if (msg.id !== undefined && this.pending.has(msg.id)) {
-      const p = this.pending.get(msg.id)!;
-      this.pending.delete(msg.id);
-      if (msg.error) p.reject(new Error(msg.error.message));
-      else p.resolve(msg.result);
-    }
-  }
-
-  send(method: string, params?: Record<string, unknown>, sessionId?: string): Promise<unknown> {
-    return new Promise((resolve, reject) => {
-      const id = ++this.id;
-      this.pending.set(id, { resolve, reject });
-      const envelope: Record<string, unknown> = { id, method, params };
-      if (sessionId) envelope.sessionId = sessionId;
-      this.ws.send(JSON.stringify(envelope));
-    });
-  }
-
-  async attachToTarget(targetId: string): Promise<string> {
-    const result = (await this.send('Target.attachToTarget', { targetId, flatten: true })) as { sessionId: string };
-    return result.sessionId;
-  }
-
-  close(): void {
-    this.ws.close();
-  }
-}
-
-async function evaluate(session: MasterCDPSession, expression: string, sessionId: string): Promise<unknown> {
-  return session.send('Runtime.evaluate', {
-    expression,
-    includeCommandLineAPI: true,
-    returnByValue: true,
-    awaitPromise: true,
-  }, sessionId);
+async function evaluate(
+  session: MasterCDPSession,
+  expression: string,
+  sessionId: string,
+): Promise<unknown> {
+  return session.send(
+    'Runtime.evaluate',
+    {
+      expression,
+      includeCommandLineAPI: true,
+      returnByValue: true,
+      awaitPromise: true,
+    },
+    sessionId,
+  );
 }
 
 // Active bus dispatch targets: every context we have injected framework into.
@@ -384,9 +362,6 @@ async function evaluate(session: MasterCDPSession, expression: string, sessionId
 // a bus topic, we forward it to all other injected contexts via their secret
 // dispatch function name.
 const activeBusTargets = new Map<string, { session: MasterCDPSession; sessionId: string }>();
-// Install the catalogue click bridge once per page target. It is a no-op
-// outside steambalance.cc/booster/catalogue and also covers popup wrappers.
-const catalogueBridgeTargets = new Set<string>();
 
 function registerBusTarget(targetId: string, session: MasterCDPSession, sessionId: string): void {
   activeBusTargets.set(targetId, { session, sessionId });
@@ -399,7 +374,9 @@ async function injectBundle(
   frameworkPath: string,
   manifest: PluginsManifest,
 ): Promise<void> {
-  console.log(`[linux-launcher] injectBundle start target=${targetId.slice(0, 8)} session=${sessionId.slice(0, 8)} ctx=${manifest.contextKind}`);
+  console.log(
+    `[linux-launcher] injectBundle start target=${targetId.slice(0, 8)} session=${sessionId.slice(0, 8)} ctx=${manifest.contextKind}`,
+  );
   const bundle = readFileSync(frameworkPath, 'utf8');
   const prefix = buildBootstrapPrefix(manifest);
 
@@ -422,7 +399,11 @@ async function injectBundle(
   const verify = await evaluate(session, `typeof window.sb`, sessionId);
   const verifyResult = verify as { result?: { value?: unknown } } | undefined;
   console.log('[linux-launcher] window.sb =', verifyResult?.result?.value);
-  await evaluate(session, `console.log('[launcher-test] context check for ${sessionId.slice(0,8)} target ${targetId.slice(0,8)}] ctx=${manifest.contextKind}', window.location.href, document.title)`, sessionId);
+  await evaluate(
+    session,
+    `console.log('[launcher-test] context check for ${sessionId.slice(0, 8)} target ${targetId.slice(0, 8)}] ctx=${manifest.contextKind}', window.location.href, document.title)`,
+    sessionId,
+  );
 }
 
 async function sendBridgeResolve(
@@ -432,11 +413,15 @@ async function sendBridgeResolve(
   response: { ok: boolean; result?: unknown; error?: string },
 ): Promise<void> {
   const expr = `typeof globalThis.__sb_resolve === 'function' && globalThis.__sb_resolve(${requestId}, ${JSON.stringify(response)})`;
-  await session.send('Runtime.evaluate', {
-    expression: expr,
-    includeCommandLineAPI: true,
-    returnByValue: true,
-  }, sessionId);
+  await session.send(
+    'Runtime.evaluate',
+    {
+      expression: expr,
+      includeCommandLineAPI: true,
+      returnByValue: true,
+    },
+    sessionId,
+  );
 }
 
 async function processNativeRequest(
@@ -462,17 +447,26 @@ async function processNativeRequest(
     if (!topic) {
       return { ok: false, error: 'missing topic' };
     }
-    console.log(`[linux-launcher] bus.publish forward topic='${topic}' to ${activeBusTargets.size} target(s)`);
+    console.log(
+      `[linux-launcher] bus.publish forward topic='${topic}' to ${activeBusTargets.size} target(s)`,
+    );
     const expr = `typeof __sb_bus_dispatch === 'function' && __sb_bus_dispatch(${JSON.stringify(topic)}, ${JSON.stringify(data)})`;
     for (const [targetId, { session, sessionId }] of activeBusTargets) {
       try {
-        await session.send('Runtime.evaluate', {
-          expression: expr,
-          includeCommandLineAPI: true,
-          returnByValue: true,
-        }, sessionId);
+        await session.send(
+          'Runtime.evaluate',
+          {
+            expression: expr,
+            includeCommandLineAPI: true,
+            returnByValue: true,
+          },
+          sessionId,
+        );
       } catch (e) {
-        console.warn(`[linux-launcher] bus.publish forward failed for target ${targetId.slice(0, 8)}:`, e instanceof Error ? e.message : e);
+        console.warn(
+          `[linux-launcher] bus.publish forward failed for target ${targetId.slice(0, 8)}:`,
+          e instanceof Error ? e.message : e,
+        );
       }
     }
     return { ok: true, result: null };
@@ -500,12 +494,19 @@ async function processNativeRequest(
     try {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), timeoutMs);
-      const init: RequestInit = { method, signal: controller.signal, headers, body };
+      const init: RequestInit = {
+        method,
+        signal: controller.signal,
+        headers,
+        body,
+      };
       const resp = await fetch(url, init);
       clearTimeout(timer);
       const respBody = await resp.text();
       const respHeaders: Record<string, string> = {};
-      resp.headers.forEach((value, key) => { respHeaders[key] = value; });
+      resp.headers.forEach((value, key) => {
+        respHeaders[key] = value;
+      });
       return {
         ok: true,
         result: {
@@ -548,29 +549,48 @@ async function startNativeBridgeLoop(
     }
   }
 
-  const pollExpr = `(function(){ const q = globalThis.__sb_native_queue || []; globalThis.__sb_native_queue = []; return q; })()`;
-  while (true) {
+  const loopId = randomBytes(12).toString('hex');
+  await session.send(
+    'Runtime.evaluate',
+    { expression: `globalThis.__sb_linuxLoop=${JSON.stringify(loopId)}` },
+    sessionId,
+  );
+  const pollExpr = `(function(){ if(globalThis.__sb_linuxLoop!==${JSON.stringify(loopId)})return null;const q = globalThis.__sb_native_queue || []; globalThis.__sb_native_queue = []; return q; })()`;
+  while (!session.closed) {
     await sleep(50);
     try {
-      const raw = await session.send('Runtime.evaluate', {
-        expression: pollExpr,
-        includeCommandLineAPI: true,
-        returnByValue: true,
-      }, sessionId);
-      const queue = (raw as { result?: { value?: unknown } })?.result?.value as Array<Record<string, unknown>> | undefined;
-      if (!Array.isArray(queue) || queue.length === 0) continue;
+      const raw = await session.send(
+        'Runtime.evaluate',
+        {
+          expression: pollExpr,
+          includeCommandLineAPI: true,
+          returnByValue: true,
+        },
+        sessionId,
+      );
+      const queue = (raw as { result?: { value?: unknown } })?.result?.value as
+        | Array<Record<string, unknown>>
+        | undefined;
+      if (!Array.isArray(queue)) return;
+      if (queue.length === 0) continue;
       for (const req of queue) {
         void processNativeRequest(req, allowedHostsByPlugin).then((response) => {
-          void sendBridgeResolve(session, sessionId, req.requestId as number, response);
+          void sendBridgeResolve(session, sessionId, req.requestId as number, response).catch(
+            () => {},
+          );
         });
       }
     } catch (e) {
-      // Session may have closed; keep looping until process exits.
+      return; // Context was destroyed; its replacement receives a fresh loop.
     }
   }
 }
 
-async function injectDevPlugins(session: MasterCDPSession, sessionId: string, manifest: PluginsManifest): Promise<void> {
+async function injectDevPlugins(
+  session: MasterCDPSession,
+  sessionId: string,
+  manifest: PluginsManifest,
+): Promise<void> {
   for (const entry of manifest.plugins) {
     const path = entry.url.replace('file://', '');
     const code = readFileSync(path, 'utf8');
@@ -616,6 +636,7 @@ async function injectWebTargets(
   pluginEntries: ManifestEntry[],
   frameworkPath: string,
   lastSeenUrls: Map<string, string>,
+  websiteHost: WebsiteHost,
 ): Promise<void> {
   let targets: CDPTarget[];
   try {
@@ -624,24 +645,39 @@ async function injectWebTargets(
     return;
   }
 
+  const currentIds = new Set(targets.map((t) => t.id));
+  websiteHost.prune(currentIds);
+  for (const id of activeBusTargets.keys()) if (!currentIds.has(id)) activeBusTargets.delete(id);
+  for (const id of lastSeenUrls.keys()) if (!currentIds.has(id)) lastSeenUrls.delete(id);
+  targets.sort(
+    (a, b) =>
+      Number(b.url.startsWith('https://steambalance.cc')) -
+      Number(a.url.startsWith('https://steambalance.cc')),
+  );
   for (const t of targets) {
     if (t.type !== 'page') continue;
+    if (
+      t.url.startsWith('https://steambalance.cc') ||
+      (t.url.startsWith('about:blank') && /Пополнение|Booster|Каталог/.test(t.title))
+    ) {
+      try {
+        await websiteHost.attach(t.id);
+      } catch (e) {
+        console.warn(
+          '[linux-host] attach failed',
+          t.id,
+          e instanceof Error ? e.message : String(e),
+        );
+      }
+    }
     if (!t.id) continue;
     if (t.title === 'SharedJSContext') continue;
     if (t.title === 'Steam' && t.url.startsWith('about:blank')) continue;
-
-    if (!catalogueBridgeTargets.has(t.id)) {
-      try {
-        const bridgeSessionId = await master.attachToTarget(t.id);
-        await master.send('Page.addScriptToEvaluateOnNewDocument', {
-          source: CATALOG_LINK_BRIDGE_SCRIPT,
-        }, bridgeSessionId);
-        catalogueBridgeTargets.add(t.id);
-      } catch (e) {
-        console.warn(`[linux-launcher] catalogue link bridge unavailable for ${t.title}:`,
-          e instanceof Error ? e.message : e);
-      }
-    }
+    if (
+      !t.url.startsWith('https://steambalance.cc') &&
+      filterWebPlugins(pluginEntries, t.url).length === 0
+    )
+      continue;
 
     const eligible = filterWebPlugins(pluginEntries, t.url);
     if (eligible.length === 0) {
@@ -650,7 +686,29 @@ async function injectWebTargets(
     }
 
     // Skip only if we already injected into this target at the same URL.
-    if (lastSeenUrls.get(t.id) === t.url) continue;
+    if (lastSeenUrls.get(t.id) === t.url) {
+      const previous = activeBusTargets.get(t.id);
+      if (previous) {
+        try {
+          const check = (await master.send(
+            'Runtime.evaluate',
+            {
+              expression: 'typeof globalThis.__sb_native === "function" && !!globalThis.sb',
+              returnByValue: true,
+            },
+            previous.sessionId,
+          )) as { result?: { value?: unknown } };
+          if (check.result?.value === true) continue;
+        } catch {}
+      }
+    }
+    const previous = activeBusTargets.get(t.id);
+    if (previous) {
+      activeBusTargets.delete(t.id);
+      void master
+        .send('Target.detachFromTarget', { sessionId: previous.sessionId })
+        .catch(() => {});
+    }
 
     console.log(`[linux-launcher] web target eligible: ${t.title} (${t.url})`);
     try {
@@ -659,7 +717,7 @@ async function injectWebTargets(
       await injectBundle(master, sessionId, t.id, frameworkPath, webManifest);
       registerBusTarget(t.id, master, sessionId);
       await injectDevPlugins(master, sessionId, webManifest);
-      void startNativeBridgeLoop(master, sessionId, webManifest);
+      void startNativeBridgeLoop(master, sessionId, webManifest).catch(() => {});
       lastSeenUrls.set(t.id, t.url);
       console.log(`[linux-launcher] injected web target ${t.id.slice(0, 8)}`);
     } catch (e) {
@@ -671,13 +729,19 @@ async function injectWebTargets(
   }
 }
 
+let steamLaunchAttempted = false;
 async function launchSteam(args: LauncherArgs): Promise<ChildProcess | undefined> {
-  if (args.waitForSteam) return undefined;
+  if (args.waitForSteam || steamLaunchAttempted) return undefined;
+  steamLaunchAttempted = true;
   console.log(`[linux-launcher] launching Steam: ${args.steamPath}`);
-  const child = spawn(args.steamPath, [`-cef-enable-debugging`, `--remote-debugging-port=${args.cdpPort}`], {
-    detached: true,
-    stdio: 'ignore',
-  });
+  const child = spawn(
+    args.steamPath,
+    [`-cef-enable-debugging`, `--remote-debugging-port=${args.cdpPort}`],
+    {
+      detached: true,
+      stdio: 'ignore',
+    },
+  );
   child.on('error', (err) => console.error('[linux-launcher] Steam spawn error:', err));
   child.on('exit', (code) => console.log('[linux-launcher] Steam exited with code', code));
   return child;
@@ -724,7 +788,9 @@ async function main(): Promise<void> {
     }
     throw new Error('SharedJSContext target did not appear within 60s');
   })();
-  console.log(`[linux-launcher] SharedJSContext target ready: ${sharedTarget.title} (${sharedTarget.id.slice(0, 8)})`);
+  console.log(
+    `[linux-launcher] SharedJSContext target ready: ${sharedTarget.title} (${sharedTarget.id.slice(0, 8)})`,
+  );
 
   // Use SharedJSContext's renderer as the master transport; we attach to
   // individual targets through it.
@@ -732,109 +798,174 @@ async function main(): Promise<void> {
   const master = new MasterCDPSession(masterUrl);
   await master.ready();
   await master.send('Target.setDiscoverTargets', { discover: true });
+  const websiteHost = new WebsiteHost(master, async (delegate, callArgs) => {
+    const target = mainHostContext;
+    if (!target || target.session !== master)
+      throw new Error('sb_user_unavailable: Steam is reconnecting');
+    const name = hostSecrets[delegate];
+    if (!name) throw new Error('unsupported delegate');
+    const result = (await evaluate(
+      master,
+      `(async()=>{const fn=globalThis[${JSON.stringify(name)}];if(typeof fn!=='function')throw new Error('sb_user_unavailable');return fn(...${JSON.stringify(callArgs)})})()`,
+      target.sessionId,
+    )) as {
+      result?: { value?: unknown };
+      exceptionDetails?: {
+        exception?: { description?: string };
+        text?: string;
+      };
+    };
+    if (result.exceptionDetails)
+      throw new Error(
+        result.exceptionDetails.exception?.description ??
+          result.exceptionDetails.text ??
+          'host call failed',
+      );
+    return result.result?.value;
+  });
 
-  // 1. Inject framework into SharedJSContext so relay (user-data, popups,
-  //    navigation, external windows) becomes available to the main shell.
-  console.log(`[linux-launcher] attaching to SharedJSContext: ${sharedTarget.title}`);
-  const sharedSessionId = await master.attachToTarget(sharedTarget.id);
-  if (!injectedTargetIds.has(sharedTarget.id)) {
-    injectedTargetIds.add(sharedTarget.id);
-    const sharedManifest = buildManifest(args, 'shared', []);
-    await injectBundle(master, sharedSessionId, sharedTarget.id, args.frameworkPath, sharedManifest);
-    registerBusTarget(sharedTarget.id, master, sharedSessionId);
-    // The relay inside SharedJSContext issues native bridge calls (title override,
-    // page target listing) that the Windows native host would handle. On Linux
-    // these are stubbed in processNativeRequest, so pump the shared context queue
-    // just like the main shell queue.
-    void startNativeBridgeLoop(master, sharedSessionId, sharedManifest);
-    console.log('[linux-launcher] SharedJSContext framework injected');
-  } else {
-    console.log('[linux-launcher] SharedJSContext already injected, skipping');
-  }
+  try {
+    // 1. Inject framework into SharedJSContext so relay (user-data, popups,
+    //    navigation, external windows) becomes available to the main shell.
+    console.log(`[linux-launcher] attaching to SharedJSContext: ${sharedTarget.title}`);
+    const sharedSessionId = await master.attachToTarget(sharedTarget.id);
+    if (!injectedTargetIds.has(sharedTarget.id)) {
+      injectedTargetIds.add(sharedTarget.id);
+      const sharedManifest = buildManifest(args, 'shared', []);
+      await injectBundle(
+        master,
+        sharedSessionId,
+        sharedTarget.id,
+        args.frameworkPath,
+        sharedManifest,
+      );
+      registerBusTarget(sharedTarget.id, master, sharedSessionId);
+      // The relay inside SharedJSContext issues native bridge calls (title override,
+      // page target listing) that the Windows native host would handle. On Linux
+      // these are stubbed in processNativeRequest, so pump the shared context queue
+      // just like the main shell queue.
+      void startNativeBridgeLoop(master, sharedSessionId, sharedManifest).catch(() => {});
+      console.log('[linux-launcher] SharedJSContext framework injected');
+    } else {
+      console.log('[linux-launcher] SharedJSContext already injected, skipping');
+    }
 
-  // 2. Wait for the main Steam shell target (it appears after login on a
-  // fresh boot, so we wait long enough for the user to type credentials).
-  const mainTarget = await (async (): Promise<CDPTarget> => {
-    const deadline = Date.now() + 10 * 60_000;
-    while (Date.now() < deadline) {
-      const current = await listTargets(args.cdpPort, 5_000);
-      const t = pickSteamMainTarget(current);
-      if (t?.id) return t;
-      await sleep(500);
-    }
-    throw new Error('could not find Steam main shell target within 10 minutes');
-  })();
+    // 2. Wait for the main Steam shell target (it appears after login on a
+    // fresh boot, so we wait long enough for the user to type credentials).
+    const mainTarget = await (async (): Promise<CDPTarget> => {
+      const deadline = Date.now() + 10 * 60_000;
+      while (Date.now() < deadline) {
+        const current = await listTargets(args.cdpPort, 5_000);
+        const t = pickSteamMainTarget(current);
+        if (t?.id) return t;
+        await sleep(500);
+      }
+      throw new Error('could not find Steam main shell target within 10 minutes');
+    })();
 
-  let mainShellInjecting = false;
-  async function injectMainShell(target: CDPTarget): Promise<void> {
-    if (mainShellInjecting) {
-      console.log('[linux-launcher] main shell injection already in progress, skipping duplicate');
-      return;
-    }
-    if (injectedTargetIds.has(target.id)) {
-      console.log('[linux-launcher] main shell already injected, skipping');
-      return;
-    }
-    mainShellInjecting = true;
-    try {
-      console.log(`[linux-launcher] attaching to main shell: ${target.title} (${target.url}) id=${target.id.slice(0, 8)}`);
-      const mainSessionId = await master.attachToTarget(target.id);
-      // Re-check after await in case another tick raced us.
-      if (injectedTargetIds.has(target.id)) {
-        console.log('[linux-launcher] main shell already injected after attach, skipping');
+    let mainShellInjecting = false;
+    async function injectMainShell(target: CDPTarget): Promise<void> {
+      if (mainShellInjecting) {
+        console.log(
+          '[linux-launcher] main shell injection already in progress, skipping duplicate',
+        );
         return;
       }
-      injectedTargetIds.add(target.id);
-      const mainManifest = buildManifest(args, 'main', pluginEntries);
-      await injectBundle(master, mainSessionId, target.id, args.frameworkPath, mainManifest);
-      registerBusTarget(target.id, master, mainSessionId);
-      await injectDevPlugins(master, mainSessionId, mainManifest);
-
-      // Start polling the main-shell native request queue so operations that the
-      // Windows native host would normally handle (net_fetch, etc.) run through
-      // the launcher Node process on Linux.
-      void startNativeBridgeLoop(master, mainSessionId, mainManifest);
-      console.log('[linux-launcher] main shell injected');
-    } finally {
-      mainShellInjecting = false;
-    }
-  }
-
-  await injectMainShell(mainTarget);
-
-  // 3. Inject framework + plugins into Steam web contexts (store/community
-  //    BrowserViews) so page-router plugins like booster-addfunds can run on
-  //    store.steampowered.com. New targets are rescanned every few seconds.
-  const webLastSeenUrls = new Map<string, string>();
-  await injectWebTargets(master, args, pluginEntries, args.frameworkPath, webLastSeenUrls);
-  const webScanInterval = setInterval(() => {
-    void injectWebTargets(master, args, pluginEntries, args.frameworkPath, webLastSeenUrls);
-  }, 1_500);
-
-  // 4. Re-inject the main shell after Steam restarts. The main shell target
-  //    disappears when Steam closes and reappears with a new ID on relaunch.
-  //    We poll for a new main target and inject when we see one we haven't
-  //    handled yet.
-  const mainShellCheckInterval = setInterval(async () => {
-    try {
-      const current = await listTargets(args.cdpPort, 5_000);
-      const t = pickSteamMainTarget(current);
-      if (t?.id && !injectedTargetIds.has(t.id) && !mainShellInjecting) {
-        console.log('[linux-launcher] new main shell target detected after restart');
-        await injectMainShell(t);
+      if (injectedTargetIds.has(target.id)) {
+        console.log('[linux-launcher] main shell already injected, skipping');
+        return;
       }
-    } catch (e) {
-      // CDP may be briefly unavailable during restart; ignore and retry.
-    }
-  }, 3_000);
+      mainShellInjecting = true;
+      try {
+        console.log(
+          `[linux-launcher] attaching to main shell: ${target.title} (${target.url}) id=${target.id.slice(0, 8)}`,
+        );
+        const mainSessionId = await master.attachToTarget(target.id);
+        // Re-check after await in case another tick raced us.
+        if (injectedTargetIds.has(target.id)) {
+          console.log('[linux-launcher] main shell already injected after attach, skipping');
+          return;
+        }
+        const mainManifest = buildManifest(args, 'main', pluginEntries);
+        await injectBundle(master, mainSessionId, target.id, args.frameworkPath, mainManifest);
+        registerBusTarget(target.id, master, mainSessionId);
+        await injectDevPlugins(master, mainSessionId, mainManifest);
 
-  console.log('[linux-launcher] injection complete; keeping alive (Ctrl+C to stop)');
-  await new Promise(() => {});
-  clearInterval(webScanInterval);
-  clearInterval(mainShellCheckInterval);
+        // Start polling the main-shell native request queue so operations that the
+        // Windows native host would normally handle (net_fetch, etc.) run through
+        // the launcher Node process on Linux.
+        void startNativeBridgeLoop(master, mainSessionId, mainManifest).catch(() => {});
+        mainHostContext = { session: master, sessionId: mainSessionId };
+        injectedTargetIds.add(target.id);
+        console.log('[linux-launcher] main shell injected');
+      } finally {
+        mainShellInjecting = false;
+      }
+    }
+
+    await injectMainShell(mainTarget);
+
+    // One serial scan prevents overlapping attachments. A new shared renderer
+    // invalidates the whole generation, including in-flight website requests.
+    const webLastSeenUrls = new Map<string, string>();
+    while (!master.closed) {
+      const current = await listTargets(args.cdpPort, 5000);
+      if (pickSharedContextTarget(current)?.id !== sharedTarget.id) break;
+      const sharedHealth = (await master.send(
+        'Runtime.evaluate',
+        {
+          expression: 'globalThis.__sb_relay_started === true',
+          returnByValue: true,
+        },
+        sharedSessionId,
+      )) as { result?: { value?: unknown } };
+      if (sharedHealth.result?.value !== true) break;
+      const nextMain = pickSteamMainTarget(current);
+      if (nextMain && mainHostContext) {
+        try {
+          const check = (await master.send(
+            'Runtime.evaluate',
+            { expression: '!!globalThis.sb', returnByValue: true },
+            mainHostContext.sessionId,
+          )) as { result?: { value?: unknown } };
+          if (check.result?.value !== true) injectedTargetIds.delete(nextMain.id);
+        } catch {
+          injectedTargetIds.delete(nextMain.id);
+        }
+      }
+      if (nextMain?.id && !injectedTargetIds.has(nextMain.id)) {
+        mainHostContext = undefined;
+        await injectMainShell(nextMain);
+      }
+      await injectWebTargets(
+        master,
+        args,
+        pluginEntries,
+        args.frameworkPath,
+        webLastSeenUrls,
+        websiteHost,
+      );
+      await sleep(1500);
+    }
+  } finally {
+    websiteHost.close();
+    master.close();
+    mainHostContext = undefined;
+    activeBusTargets.clear();
+  }
 }
 
-main().catch((err) => {
-  console.error('[linux-launcher] fatal:', err);
-  process.exit(1);
-});
+async function run(): Promise<void> {
+  while (true) {
+    try {
+      await main();
+    } catch (error) {
+      console.error(
+        '[linux-launcher] reconnect:',
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+    await sleep(1500);
+  }
+}
+void run();

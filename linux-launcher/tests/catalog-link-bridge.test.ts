@@ -14,3 +14,14 @@ test('catalogue bridge preserves modified and non-left clicks', () => {
   expect(CATALOG_LINK_BRIDGE_SCRIPT).toContain('event.ctrlKey');
   expect(CATALOG_LINK_BRIDGE_SCRIPT).toContain('event.preventDefault()');
 });
+
+import {Window} from 'happy-dom';
+test('catalog link bridge leaves nested purchase buttons to the official page',async()=>{
+ const w=new Window({url:'https://steambalance.cc/booster/catalogue'});
+ w.document.body.innerHTML='<a href="https://store.steampowered.com/app/123"><button>Buy</button></a>';
+ new Function('window','location','document','Element',CATALOG_LINK_BRIDGE_SCRIPT)(w,w.location,w.document,w.Element);
+ const event=new w.MouseEvent('click',{bubbles:true,cancelable:true,button:0});
+ w.document.querySelector('button')!.dispatchEvent(event);
+ expect(event.defaultPrevented).toBe(false);
+ await w.happyDOM.close();
+});

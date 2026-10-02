@@ -33,6 +33,7 @@ export interface SecContext {
    *  sb.bus and awaits the result, so the native host.purchaseKey handler can
    *  reach it without the minimal window.sb facade. */
   keysPurchase?: string;
+  hostAccount?: string;
 }
 
 export function readAndConsumeSec(): SecContext {
@@ -63,6 +64,7 @@ export function readAndConsumeSec(): SecContext {
   const keysPurchase = typeof secObj['keysPurchase'] === 'string'
     ? secObj['keysPurchase']
     : undefined;
+  const hostAccount = typeof secObj['hostAccount'] === 'string' ? secObj['hostAccount'] : undefined;
   delete obj['_sec'];
-  return { frameworkToken, resolverName, busDispatchName, relaySecret, keysActivate, rateAccountData, keysPurchase };
+  return { frameworkToken, resolverName, busDispatchName, relaySecret, keysActivate, rateAccountData, keysPurchase, hostAccount };
 }

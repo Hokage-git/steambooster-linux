@@ -1,3 +1,4 @@
+import { makeHostAccount } from './host-account';
 import { createRegistry } from './registry';
 import { createBridge, createTokenBridge } from './bridge';
 import { makeUiApi } from './api/ui';
@@ -216,6 +217,10 @@ declare global {
     get _pluginOutcomes() { return (api as unknown as { _pluginOutcomes?: unknown[] })._pluginOutcomes; },
   };
 
+  if (sec.hostAccount) {
+    Object.defineProperty(window, sec.hostAccount, {value:makeHostAccount(api.steam), configurable:true});
+  }
+
   // Register the per-launch secret keys-activate fn. The injector emits
   // _sec.keysActivate so the native host.activateKey handler can invoke
   // api.keys.activate without relying on the minimal window.sb facade.
@@ -256,6 +261,13 @@ declare global {
       writable: false,
     });
   }
+
+  // Retire protected delegates with their injection, including hot updates.
+  scope.signal.addEventListener('abort', () => {
+    for (const name of [sec.hostAccount, sec.keysActivate, sec.rateAccountData, sec.keysPurchase]) {
+      if (name) delete (window as unknown as Record<string, unknown>)[name];
+    }
+  }, { once: true });
 
   // Global error / unhandled-rejection forwarders. Routed through scope.listen
   // so they auto-detach on rollbackAll — without that, the OLD injection's
