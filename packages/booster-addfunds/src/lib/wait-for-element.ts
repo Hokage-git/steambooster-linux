@@ -27,9 +27,10 @@ export async function waitForElement<T extends HTMLElement>(
   });
 }
 
-// Resolve when `predicate()` returns a non-null element (or null on timeout/abort).
-// Like waitForElement but for matches that can't be expressed as a single selector.
-export async function waitForElementBy<T extends HTMLElement>(
+// Resolve when `predicate()` returns a non-null value (or null on timeout/abort).
+// Like waitForElement but for matches that can't be expressed as a single
+// selector — the result need not be an element (e.g. a resolved insert point).
+export async function waitForElementBy<T>(
   predicate: () => T | null,
   signal: AbortSignal,
   timeoutMs = 5000,

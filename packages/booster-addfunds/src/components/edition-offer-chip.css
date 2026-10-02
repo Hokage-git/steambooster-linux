@@ -26,6 +26,12 @@
 .booster-eo .booster-eo-now {                       /* 319:915; itemSpacing -4 → overlap */
   font-size: 12px; line-height: 16px; margin-top: -4px;
 }
+/* Single price (no struck original above): mirror Steam's native
+ * .discount_final_price — 14px white, weight 400, vertically centered. The
+ * -4px overlap offset exists only to tighten the two-line stack, so drop it. */
+.booster-eo--single .booster-eo-now {
+  font-size: 14px; margin-top: 0;
+}
 .booster-eo .booster-eo-buy {                       /* brand green action, like header top-up */
   display: inline-flex; align-items: center; justify-content: center;
   background: #34a37b; color: #fff; border: 0; cursor: pointer;

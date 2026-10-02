@@ -2,6 +2,7 @@ import type { SbApi, SteamUser } from '@steambalance/booster-framework/api-types
 import { resolveKeysPaymentId } from './keys-payment';
 import { fetchKeys } from './keys-fetch';
 import { postKeysOrder } from './keys-order';
+import { LL } from '../i18n';
 
 export interface KeysWindowTitles {
   /** React TitleBar heading inside the payment window. */
@@ -37,6 +38,28 @@ async function resolveSteamEmail(user: SteamUser | null): Promise<string | undef
   try { return (await user.email()) || undefined; } catch { return undefined; }
 }
 
+// Shared order-execution core: resolve payment method → create the order →
+// persist its uid → open the native payment window. Used by BOTH the store
+// «Купить» flow (booster-addfunds.keys.purchase) and the catalogue flow
+// (booster-checkout.keys.external-purchase). Email/login are resolved by each
+// caller (they differ only in email policy) and passed in as `account`/`login`.
+async function placeKeysOrder(
+  sb: SbApi,
+  deps: KeysBridgeDeps,
+  fetchImpl: typeof fetch,
+  input: { itemId: number; account: string; login: string; titles: KeysWindowTitles },
+): Promise<{ ok: boolean; orderUid?: string; error?: string; message?: string }> {
+  const paymentId = await resolveKeysPaymentId(sb, fetchImpl);
+  if (!paymentId) return { ok: false, error: 'no-payment' };
+  const res = await postKeysOrder(sb, {
+    paymentId, itemId: input.itemId, account: input.account, login: input.login,
+  });
+  if (!res.ok || !res.redirectUrl) return { ok: false, error: res.error, message: res.message };
+  if (res.uid) deps.onOrderUid?.(res.uid);
+  const opened = await deps.openPayment(res.redirectUrl, input.titles);
+  return { ok: opened, orderUid: res.uid, error: opened ? undefined : 'window' };
+}
+
 export function installKeysBridge(sb: SbApi, deps: KeysBridgeDeps): () => void {
   const fetchImpl = deps.fetchImpl ?? fetch;
   const subs: Array<() => void> = [];
@@ -66,22 +89,47 @@ export function installKeysBridge(sb: SbApi, deps: KeysBridgeDeps): () => void {
         title: sanitizeTitle(d.windowTitle),
         taskbarTitle: sanitizeTitle(d.windowTaskbarTitle),
       };
-      // Sync getter (not getCurrentUserAsync, which never resolves with no snapshot —
-      // it would leak a pending promise on a not-logged-in shell). One read → a
-      // consistent email + login pair from the same snapshot.
+      // Sync getter (not getCurrentUserAsync, which never resolves with no
+      // snapshot — it would leak a pending promise on a not-logged-in shell).
+      // One read → a consistent email + login pair from the same snapshot.
       const user = sb.steam.getCurrentUser();
       const account = (typeof d.email === 'string' && d.email) ? d.email : await resolveSteamEmail(user);
       if (!account) { sb.bus.publish('booster-checkout.keys.email-required', { reqId }); return; }
-      const paymentId = await resolveKeysPaymentId(sb, fetchImpl);
-      if (!paymentId) { sb.bus.publish('booster-checkout.keys.purchase-result', { reqId, ok: false, error: 'no-payment' }); return; }
-      // Steam login (accountName) — always sent alongside the email `account`;
-      // empty string on the rare null-user window (never blocks the purchase).
       const login = user?.accountName ?? '';
-      const res = await postKeysOrder(sb, { paymentId, itemId, account, login });
-      if (!res.ok || !res.redirectUrl) { sb.bus.publish('booster-checkout.keys.purchase-result', { reqId, ok: false, error: res.error, message: res.message }); return; }
-      if (res.uid) deps.onOrderUid?.(res.uid);
-      const opened = await deps.openPayment(res.redirectUrl, titles);
-      sb.bus.publish('booster-checkout.keys.purchase-result', { reqId, ok: opened, error: opened ? undefined : 'window' });
+      const r = await placeKeysOrder(sb, deps, fetchImpl, { itemId, account, login, titles });
+      // Wire-shape unchanged: no orderUid; error 'window' on window-fail; error/message
+      // on order-fail; error 'no-payment' when no method. (message:undefined drops over the wire.)
+      sb.bus.publish('booster-checkout.keys.purchase-result', { reqId, ok: r.ok, error: r.error, message: r.message });
+    })();
+  }));
+
+  // Catalogue flow (steambalance.cc → window.SteamBooster.purchaseKey → framework
+  // keysPurchase delegate → this topic). Same order pipeline as the store «Купить»
+  // flow, but email comes ONLY from the Steam account (no email-required round-trip,
+  // no modal): missing email → {ok:false, error:'no-email'}. Own-prefix topic.
+  subs.push(sb.bus.subscribe('booster-checkout.keys.external-purchase', (data) => {
+    void (async () => {
+      const d = data as { reqId?: unknown; itemId?: unknown; gameName?: unknown } | null;
+      if (!d || typeof d.reqId !== 'string' || typeof d.itemId !== 'number') return;
+      const reqId = d.reqId; const itemId = d.itemId;
+      // Cap gameName so the composed title stays under TITLE_MAX (200); sanitizeTitle
+      // is the final net (drops an over-long composed title to undefined → page title).
+      const gn = typeof d.gameName === 'string' && d.gameName ? d.gameName.slice(0, 150) : undefined;
+      const titles: KeysWindowTitles = {
+        title: sanitizeTitle(gn ? LL.checkout.keys.purchase_window_title({ gameName: gn }) : undefined),
+        taskbarTitle: sanitizeTitle(LL.checkout.keys.purchase_window_taskbar_title()),
+      };
+      const user = sb.steam.getCurrentUser();
+      const account = await resolveSteamEmail(user);
+      if (!account) {
+        sb.bus.publish('booster-checkout.keys.external-purchase-result', { reqId, ok: false, error: 'no-email' });
+        return;
+      }
+      const login = user?.accountName ?? '';
+      const r = await placeKeysOrder(sb, deps, fetchImpl, { itemId, account, login, titles });
+      sb.bus.publish('booster-checkout.keys.external-purchase-result', {
+        reqId, ok: r.ok, orderUid: r.orderUid, error: r.error, message: r.message,
+      });
     })();
   }));
 

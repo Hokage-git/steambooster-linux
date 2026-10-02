@@ -91,6 +91,7 @@ function makeKeysClient(opts: {
 interface SbStub {
   sb: any;
   pageReg: { name: string; match: { url: RegExp | ((u: URL) => boolean) }; mount: any }[];
+  fireBus: (topic: string, data: unknown) => void;
 }
 
 function makeSbStub(): SbStub {
@@ -126,6 +127,7 @@ function makeSbStub(): SbStub {
       },
     } as any,
     pageReg,
+    fireBus: (topic: string, data: unknown) => { for (const cb of busSubs.get(topic) ?? []) cb(data); },
   };
 }
 
@@ -560,6 +562,42 @@ describe('registerAppPage', () => {
         expect(rightcol.firstElementChild).toBe(block);
         const cached = JSON.parse(window.localStorage.getItem(CACHE_KEY)!);
         expect(cached).toEqual({ items: [{ link: 'https://steambalance.cc/a', cover: 'https://cdn/a.jpg' }], fetchedAt: NOW, attemptedAt: NOW });
+      });
+
+      // Integration: the page feeds the account region into the carousel fetch.
+      // Region is sb.steam.getStoreCountry ('RU' in the stub), upper-cased;
+      // currency comes from the snapshot (null here — its omission is covered by
+      // catalogue-api's own unit test).
+      test('passes country from getStoreCountry into fetchCatalogue', async () => {
+        const { sb, pageReg } = makeSbStub();
+        let seen: any;
+        registerAppPage(sb, {
+          keysClient: makeKeysClient({ items: [] }),
+          now: () => 1_700_000_000_000,
+          fetchCatalogue: async (_sb: any, params: any) => { seen = params; return { status: 'ok', items: [{ link: 'https://steambalance.cc/a', cover: 'https://cdn/a.jpg' }] }; },
+        });
+        setBody(editionBody);
+        await reg(pageReg).mount(mountCtx());
+        await tick();
+        expect(seen).toBeDefined();
+        expect(seen.country).toBe('RU');
+        expect(seen.currency).toBeNull();
+      });
+
+      test('upper-cases and passes snapshot currency into fetchCatalogue', async () => {
+        const { sb, pageReg, fireBus } = makeSbStub();
+        let seen: any;
+        registerAppPage(sb, {
+          keysClient: makeKeysClient({ items: [] }),
+          now: () => 1_700_000_000_000,
+          fetchCatalogue: async (_sb: any, params: any) => { seen = params; return { status: 'ok', items: [{ link: 'https://steambalance.cc/a', cover: 'https://cdn/a.jpg' }] }; },
+        });
+        fireBus('booster-checkout.user.snapshot', { accountName: 'u', currency: 'kzt', balance: 0 });
+        setBody(editionBody);
+        await reg(pageReg).mount(mountCtx());
+        await tick();
+        expect(seen.country).toBe('RU');
+        expect(seen.currency).toBe('KZT');
       });
 
       test('empty result with a stale-cache block already shown → block is removed, cache written as empty-marker', async () => {

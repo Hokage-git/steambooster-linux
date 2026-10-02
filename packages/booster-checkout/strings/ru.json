@@ -11,6 +11,10 @@
       "terms_window_title": "Пользовательское соглашение — SteamBalance",
       "privacy_window_title": "Политика конфиденциальности — SteamBalance"
     },
+    "keys": {
+      "purchase_window_title": "Покупка ключа — «{gameName:string}»",
+      "purchase_window_taskbar_title": "Покупка ключа"
+    },
     "promo": {
       "title":  "Игры дешевле",
       "button": "Каталог"

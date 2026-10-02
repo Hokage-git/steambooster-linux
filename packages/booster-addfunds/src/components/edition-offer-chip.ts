@@ -72,6 +72,10 @@ export function buildEditionOfferChip(opts: EditionChipOptions): EditionChip {
         was.className = 'booster-eo-was';
         was.textContent = fmtMoneyKeys(item.oldPrice);
         prices.appendChild(was);
+      } else {
+        // Single price (no struck original above) → render it like Steam's
+        // native .discount_final_price (see .booster-eo--single in the CSS).
+        root.classList.add('booster-eo--single');
       }
       const now = document.createElement('span');
       now.className = 'booster-eo-now';

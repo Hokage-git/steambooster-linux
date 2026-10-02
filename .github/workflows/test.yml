@@ -33,7 +33,7 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: 1.3.14
 
       - name: Install dependencies (booster-framework)
         working-directory: booster-framework
@@ -69,6 +69,10 @@ jobs:
         working-directory: booster-plugins
         run: bun test --cwd packages/booster-addfunds
 
+      - name: Run tests (booster-rateaccount)
+        working-directory: booster-plugins
+        run: bun test --cwd packages/booster-rateaccount
+
       - name: Build booster-checkout
         working-directory: booster-plugins
         run: bun run --filter '@booster-plugins/booster-checkout' build
@@ -76,3 +80,7 @@ jobs:
       - name: Build booster-addfunds
         working-directory: booster-plugins
         run: bun run --filter '@booster-plugins/booster-addfunds' build
+
+      - name: Build booster-rateaccount
+        working-directory: booster-plugins
+        run: bun run --filter '@booster-plugins/booster-rateaccount' build

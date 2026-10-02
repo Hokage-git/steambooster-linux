@@ -20,7 +20,7 @@
 // scoped via #booster-topup-bar so it can't leak onto Steam's own layout.
 
 import type { SbApi, PageContext } from '@steambalance/booster-framework/api-types';
-import { findCartTotal } from '../lib/cart-total';
+import { findCartTotal, findCartTotalLabel } from '../lib/cart-total';
 import { ensureSnapshotService } from '../lib/user-snapshot';
 import { buildTopupBar, ensureTopupStyles, type TopupBar } from '../components/topup-bar';
 import { currencySym } from '../lib/currency';
@@ -36,12 +36,75 @@ declare const __SB_ADDFUNDS_LOGO_DATA_URI__: string;
 const LOGO = typeof __SB_ADDFUNDS_LOGO_DATA_URI__ !== 'undefined' ? __SB_ADDFUNDS_LOGO_DATA_URI__ : '';
 const DEBOUNCE_MS = 200;
 
-// Locate the "Ваша корзина" header by own-text (normalized).
+// Steam appends an item counter ("Ваша корзина (товаров: 3)"), so match by
+// PREFIX — an exact compare silently stops matching. Keep the FULL phrase:
+// the bare word "Корзина" also labels the supernav cart link, which comes
+// first in document order and swallowed the bar when we matched on it.
+// Two link guards, for the two ways Steam repeats this text:
+//   - inside a link  → the supernav cart button
+//   - next to a link → the breadcrumb trail ("Домашняя страница > …")
+// Rewording beyond this is handled by the total-block fallback, NOT by
+// loosening the match — a looser match lands the bar somewhere absurd.
+const norm = (s: string | null | undefined): string => (s ?? '').replace(/\s+/g, ' ').trim();
+const CART_HEADING = 'Ваша корзина'; // strings-allow-cyrillic
+
 function findCartHeaderNow(): HTMLElement | null {
   return ([...document.querySelectorAll('div,h1,h2,span')] as HTMLElement[]).find((el) => {
-    const own = [...el.childNodes].filter((n) => n.nodeType === 3).map((n) => (n.textContent ?? '').trim()).join('');
-    return own === 'Ваша корзина'; // strings-allow-cyrillic
+    const own = norm([...el.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent).join(''));
+    if (!own.startsWith(CART_HEADING)) return false;
+    if (el.closest('a')) return false;
+    return ![...(el.parentElement?.children ?? [])].some((c) => c.tagName === 'A');
   }) ?? null;
+}
+
+interface Anchor { parent: HTMLElement; before: Node | null }
+
+// Steam lays the cart out as a flex row: [items column | summary column]. Given
+// the total's label, walk up to the row child that CONTAINS it — that is the
+// summary column — and return its sibling, the items column.
+function isColumnRow(el: HTMLElement): boolean {
+  // Only a real flex/grid row splits the cart into columns. Without this check
+  // any parent with two children qualifies — including the total block itself,
+  // whose second child is just the price text.
+  try {
+    // Resolve through the element's OWN window, not the global: the global is
+    // absent in some hosts (and in tests), where a bare getComputedStyle throws
+    // and the catch would silently answer "not a row".
+    const view = el.ownerDocument?.defaultView as (Window & typeof globalThis) | null;
+    const d = view?.getComputedStyle(el).display ?? el.style?.display ?? '';
+    return d === 'flex' || d === 'grid' || d === 'inline-flex' || d === 'inline-grid';
+  } catch { return false; }
+}
+
+// Walk DOWN from the header's container to the two-column row, instead of UP
+// from the total: Steam renders a second, display:none copy of the total for a
+// narrow layout, and climbing from that copy lands in the wrong subtree.
+// The row is the header's sibling — a flex/grid box with exactly two children,
+// [items | summary] — and the items column is the first of them.
+function findItemsColumn(header: HTMLElement): HTMLElement | null {
+  const container = header.parentElement;
+  if (!container) return null;
+  const row = ([...container.children] as HTMLElement[]).find(
+    (c) => c !== header && isColumnRow(c) && c.children.length === 2,
+  );
+  const items = row?.children[0] as HTMLElement | undefined;
+  return items && items.children.length > 0 ? items : null;
+}
+
+// Anchor INSIDE the items column. Inserting above the row instead pushed both
+// columns down, so the "Общая стоимость / Перейти к оплате" panel sank by the
+// bar's height. Falls back to the header, then to the total block, so a layout
+// change degrades the bar's POSITION rather than removing it.
+function findAnchorNow(): Anchor | null {
+  const header = findCartHeaderNow();
+  if (header) {
+    const items = findItemsColumn(header);
+    if (items) return { parent: items, before: items.firstChild };
+    if (header.parentElement) return { parent: header.parentElement, before: header.nextSibling };
+  }
+  const block = findCartTotalLabel(document)?.parentElement;
+  if (block?.parentElement) return { parent: block.parentElement, before: block };
+  return null;
 }
 
 export function registerCartPage(sb: SbApi): void {
@@ -56,8 +119,17 @@ export function registerCartPage(sb: SbApi): void {
       }
       if (ctx.signal.aborted) return;
 
-      const header = await waitForElementBy(findCartHeaderNow, ctx.signal);
-      if (!header || ctx.signal.aborted) return;
+      // Warn on every miss: a silent no-op is how the last Steam reword went
+      // unnoticed until a user reported it.
+      const anchor = await waitForElementBy(findAnchorNow, ctx.signal);
+      if (ctx.signal.aborted) return;
+      if (!anchor) {
+        console.warn('[booster-addfunds] cart: no anchor — header and total both missing, bar not rendered');
+        return;
+      }
+      if (!findCartHeaderNow()) {
+        console.warn('[booster-addfunds] cart header not found — anchoring above the total block');
+      }
 
       ensureTopupStyles();
       const root = (document.querySelector('.responsive_page_content') as HTMLElement) ?? document.body;
@@ -102,7 +174,7 @@ export function registerCartPage(sb: SbApi): void {
             onSubmit: (a) => { sb.bus.publish('booster-addfunds.topup-requested', { amount: a }); },
           });
           observer.disconnect();
-          header.parentElement?.insertBefore(bar.root, header.nextSibling);
+          anchor.parent.insertBefore(bar.root, anchor.before);
           observer.observe(root, OPTS);
           lastAmount = amount;
         } else if (amount !== lastAmount) {

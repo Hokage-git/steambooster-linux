@@ -20,6 +20,7 @@ import { wireOrdersKeyActivation } from './orders-keys';
 import { isDocKey, DOC_WINDOW_DIMS, docWindowContent, type DocKey } from './doc-windows';
 import { LL } from '../i18n';
 import { installKeysBridge, type KeysWindowTitles } from './keys-install';
+import { installStoreCurrencyFallback } from './store-currency-fallback';
 
 declare const __SB_POPUP_HTML__: string;
 // Inline SVG (15×12 "S6" mark) for the Steam-toolbar header pill. Wide
@@ -223,6 +224,16 @@ export async function installMain(ctx: PluginContext): Promise<() => void> {
   });
   cleanups.push(unsubTopupOpen);
 
+  // Store-country currency fallback (zero-balance wallets emit no balance string;
+  // resolve currency from the captured store country). Re-push init + snapshot
+  // when it lands so the popup default + addfunds bus update without a relaunch.
+  // Declared before the snapshot-request subscriber (line ~247) so a boot-time
+  // request that runs during attachPopup can't hit it in the temporal dead zone.
+  const storeCurrencyFallback = installStoreCurrencyFallback(sb, () => {
+    sendInitCore();
+    publishUserSnapshot();
+  });
+
   // ── booster-checkout.user.snapshot broadcaster ───────────────────────────
   // Store-target plugins (addfunds) can't read sb.steam directly — the
   // BroadcastChannel that backs sb.steam doesn't cross to
@@ -241,7 +252,7 @@ export async function installMain(ctx: PluginContext): Promise<() => void> {
     if (!u) return;
     sb.bus.publish('booster-checkout.user.snapshot', {
       accountName: u.accountName,
-      currency: u.currency ?? null,
+      currency: u.currency ?? storeCurrencyFallback.get(),
       balance: u.balance ?? null,
     });
   }
@@ -560,7 +571,7 @@ export async function installMain(ctx: PluginContext): Promise<() => void> {
     popup.postMessage({
       kind: 'init',
       login:          user?.accountName ?? '',
-      currency:       user?.currency ?? null,
+      currency:       user?.currency ?? storeCurrencyFallback.get(),
       // balance:0 IS a valid empty wallet; bridge.ts assigns only finite
       // numbers so passing null on cold-start is correctly ignored.
       balance:        user?.balance ?? null,
@@ -610,6 +621,7 @@ export async function installMain(ctx: PluginContext): Promise<() => void> {
   // time addfunds subscribes. Cold-cold (no user yet) is a no-op; the
   // onUserChange below publishes when the first snapshot lands.
   publishUserSnapshot();
+  if (!sb.steam.getCurrentUser()?.currency) void storeCurrencyFallback.refresh();
 
   // Reliable x-booster-uuid: resolve the install SetupId ourselves (the
   // framework prefetch is best-effort and can lag the popup's first init),
@@ -654,6 +666,7 @@ export async function installMain(ctx: PluginContext): Promise<() => void> {
     // Cross-target broadcast — store-page subscribers update their
     // currency-aware UI on account switch / balance change.
     publishUserSnapshot();
+    if (!user.currency) void storeCurrencyFallback.refresh();
   });
   cleanups.push(unsubUserChange);
 
@@ -671,6 +684,10 @@ export async function installMain(ctx: PluginContext): Promise<() => void> {
   popup.on('show', () => {
     sendInitCore();
     void sendInitEmail();
+    // Catches a new user who has since visited the store: the popup's
+    // 'show' is the most-frequent re-entry point, so this is the fallback
+    // most likely to land a fresh store-country currency without a relaunch.
+    if (!sb.steam.getCurrentUser()?.currency) void storeCurrencyFallback.refresh();
     // Consume the prefill carry (set by openTopupWithAmount just before
     // popup.show()). When present, the popup-side bridge seeds ui.amount
     // from this value instead of the currency default — single-envelope

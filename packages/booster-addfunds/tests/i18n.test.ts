@@ -15,7 +15,7 @@ describe('addfunds namespace strings', () => {
 
 test('new addfunds strings resolve', () => {
   expect(LL.addfunds.cart_heading()).toBe('Вам не хватает баланса');
-  expect(LL.addfunds.keys_block_title()).toBe('У нас имеются ключи для игры в вашем регионе!');
+  expect(LL.addfunds.keys_block_title()).toBe('У нас игра доступна для вашего региона:');
   expect(LL.addfunds.keys_buy_button()).toBe('Купить');
   expect(LL.addfunds.keys_row_label({ gameName: 'X' })).toBe('Купить X');
   expect(LL.addfunds.keys_block_aria_label()).toBe('Доступные ключи для покупки в вашем регионе');

@@ -263,4 +263,60 @@ describe('installKeysBridge', () => {
     expect(after.length).toBe(before + 1);
     expect(after.at(-1)!.data).toEqual({ paymentId: 'p', storeCountry: 'RU' });
   });
+
+  test('external-purchase with steam email → order placed, result carries orderUid', async () => {
+    const bus = makeBus();
+    const uid = 'a5273b1e-87b4-435f-95ed-e85995b8951d';
+    installKeysBridge(makeSb(bus, { email: 'a@b.c', netFetch: orderNetFetch([uid]) }), {
+      openPayment: async () => true, fetchImpl: paymentsFetch,
+    });
+    bus.publish('booster-checkout.keys.external-purchase', { reqId: 'e1', itemId: 7, gameName: 'Earth 2160' });
+    await new Promise((r) => setTimeout(r, 5));
+    const res = bus.published.find((p) => p.topic === 'booster-checkout.keys.external-purchase-result');
+    expect(res!.data).toMatchObject({ reqId: 'e1', ok: true, orderUid: uid });
+  });
+
+  test('external-purchase without steam email → no-email (NO email-required, no modal)', async () => {
+    const bus = makeBus();
+    installKeysBridge(makeSb(bus, { email: undefined }), { openPayment: async () => true, fetchImpl: paymentsFetch });
+    bus.publish('booster-checkout.keys.external-purchase', { reqId: 'e2', itemId: 7 });
+    await new Promise((r) => setTimeout(r, 5));
+    const res = bus.published.find((p) => p.topic === 'booster-checkout.keys.external-purchase-result');
+    expect(res!.data).toMatchObject({ reqId: 'e2', ok: false, error: 'no-email' });
+    expect(bus.published.some((p) => p.topic === 'booster-checkout.keys.email-required')).toBe(false);
+  });
+
+  test('external-purchase builds the payment-window title from gameName', async () => {
+    const bus = makeBus();
+    let gotTitles: any;
+    installKeysBridge(makeSb(bus, { email: 'a@b.c', netFetch: orderNetFetch(['a5273b1e-87b4-435f-95ed-e85995b8951d']) }), {
+      openPayment: async (_u, t) => { gotTitles = t; return true; }, fetchImpl: paymentsFetch,
+    });
+    bus.publish('booster-checkout.keys.external-purchase', { reqId: 'e3', itemId: 7, gameName: 'Earth 2160' });
+    await new Promise((r) => setTimeout(r, 5));
+    expect(gotTitles.title).toContain('Earth 2160');
+    expect(typeof gotTitles.taskbarTitle).toBe('string');
+  });
+
+  test('external-purchase with no payment method → no-payment', async () => {
+    const bus = makeBus();
+    const noPayments = okFetch({ success: true, data: [] });
+    installKeysBridge(makeSb(bus, { email: 'a@b.c' }), { openPayment: async () => true, fetchImpl: noPayments });
+    bus.publish('booster-checkout.keys.external-purchase', { reqId: 'e4', itemId: 7 });
+    await new Promise((r) => setTimeout(r, 5));
+    const res = bus.published.find((p) => p.topic === 'booster-checkout.keys.external-purchase-result');
+    expect(res!.data).toMatchObject({ reqId: 'e4', ok: false, error: 'no-payment' });
+  });
+
+  test('external-purchase order failure forwards server message', async () => {
+    const bus = makeBus();
+    const order = { success: false, message: 'Регион недоступен' };
+    const netFetch = (async () => ({ ok: true, status: 200, headers: {}, json: async () => order, text: async () => '' })) as any;
+    installKeysBridge(makeSb(bus, { email: 'a@b.c', netFetch }), { openPayment: async () => true, fetchImpl: paymentsFetch });
+    bus.publish('booster-checkout.keys.external-purchase', { reqId: 'e5', itemId: 7 });
+    await new Promise((r) => setTimeout(r, 5));
+    const res = bus.published.find((p) => p.topic === 'booster-checkout.keys.external-purchase-result');
+    expect((res!.data as any).ok).toBe(false);
+    expect((res!.data as any).message).toBe('Регион недоступен');
+  });
 });
